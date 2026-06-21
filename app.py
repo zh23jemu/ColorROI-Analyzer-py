@@ -17,6 +17,7 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 from PIL import Image
+from PIL import ImageDraw
 
 
 def _patch_streamlit_canvas_image_api() -> None:
@@ -106,7 +107,13 @@ def main() -> None:
         key=f"canvas_{uploaded.name}_{display_img.width}_{display_img.height}",
     )
 
-    roi_boundary, hair_mask = _extract_masks(canvas_result.image_data, img.shape[:2], scale)
+    roi_boundary, hair_mask = _extract_masks(
+        image_data=canvas_result.image_data,
+        json_data=canvas_result.json_data,
+        target_shape=img.shape[:2],
+        display_shape=(display_img.height, display_img.width),
+        scale=scale,
+    )
     if run_analysis:
         _run_analysis(img, roi_boundary, hair_mask, repair_hair)
 
@@ -165,14 +172,25 @@ def _canvas_style(draw_mode: str) -> tuple[str, str]:
     return "rgba(255,220,0,1)", "freedraw"
 
 
-def _extract_masks(image_data: np.ndarray | None, target_shape: tuple[int, int], scale: float) -> tuple[np.ndarray, np.ndarray]:
+def _extract_masks(
+    image_data: np.ndarray | None,
+    json_data: dict | None,
+    target_shape: tuple[int, int],
+    display_shape: tuple[int, int],
+    scale: float,
+) -> tuple[np.ndarray, np.ndarray]:
     """从 Streamlit 画布图层中提取 ROI 边界和毛发 mask。
 
-    streamlit-drawable-canvas 返回的是包含背景图的 RGBA 截图，因此需要先根据
-    标注颜色的优势通道规则提取黄色/红色，再按显示缩放比例映射回原图尺寸。
+    优先使用 `json_data` 中的 Fabric 手绘对象重建 mask。这样只读取用户真正
+    画出的路径，不会把背景皮肤颜色、网格线或图片上的标尺误判为黄色/红色
+    标注。只有当旧版组件没有返回 JSON 对象时，才回退到 RGBA 截图颜色识别。
     """
 
     h, w = target_shape
+    roi_small, hair_small = _masks_from_canvas_json(json_data, display_shape)
+    if roi_small.any() or hair_small.any():
+        return _resize_canvas_masks(roi_small, hair_small, target_shape)
+
     if image_data is None:
         return np.zeros((h, w), dtype=bool), np.zeros((h, w), dtype=bool)
 
@@ -180,10 +198,179 @@ def _extract_masks(image_data: np.ndarray | None, target_shape: tuple[int, int],
     if scale == 1 and roi_small.shape == (h, w):
         return roi_small, hair_small
 
-    # 用 Pillow 最近邻缩放 mask，保持边界像素的二值属性，不引入插值灰边。
+    return _resize_canvas_masks(roi_small, hair_small, target_shape)
+
+
+def _resize_canvas_masks(
+    roi_small: np.ndarray,
+    hair_small: np.ndarray,
+    target_shape: tuple[int, int],
+) -> tuple[np.ndarray, np.ndarray]:
+    """把画布显示尺寸的二值 mask 映射回原图尺寸。"""
+
+    h, w = target_shape
     roi_img = Image.fromarray((roi_small.astype(np.uint8) * 255), mode="L").resize((w, h), Image.Resampling.NEAREST)
     hair_img = Image.fromarray((hair_small.astype(np.uint8) * 255), mode="L").resize((w, h), Image.Resampling.NEAREST)
     return np.asarray(roi_img) > 0, np.asarray(hair_img) > 0
+
+
+def _masks_from_canvas_json(json_data: dict | None, display_shape: tuple[int, int]) -> tuple[np.ndarray, np.ndarray]:
+    """从 Fabric.js JSON 对象中重建黄色 ROI 和红色毛发 mask。
+
+    `streamlit-drawable-canvas` 的 `image_data` 是背景图和标注合成后的截图；
+    而 `json_data["objects"]` 只包含用户画出的对象。读取 JSON 路径能避免背景
+    图片颜色干扰，是当前交互式标注最稳定的解析入口。
+    """
+
+    display_h, display_w = display_shape
+    roi_img = Image.new("L", (display_w, display_h), 0)
+    hair_img = Image.new("L", (display_w, display_h), 0)
+    roi_draw = ImageDraw.Draw(roi_img)
+    hair_draw = ImageDraw.Draw(hair_img)
+
+    for obj in (json_data or {}).get("objects", []):
+        points = _fabric_path_points(obj)
+        if len(points) < 2:
+            continue
+
+        stroke_width = max(1, int(round(float(obj.get("strokeWidth") or 1))))
+        stroke = str(obj.get("stroke") or "")
+        if _is_roi_stroke(stroke):
+            roi_draw.line(points, fill=255, width=stroke_width, joint="curve")
+        elif _is_hair_stroke(stroke):
+            hair_draw.line(points, fill=255, width=stroke_width, joint="curve")
+
+    return np.asarray(roi_img) > 0, np.asarray(hair_img) > 0
+
+
+def _fabric_path_points(obj: dict) -> list[tuple[float, float]]:
+    """把 Fabric.js path 对象转换为可绘制点序列。
+
+    自由画笔通常生成 `M`、`L`、`Q` 命令；这里同时兼容三次贝塞尔 `C`。
+    曲线会被采样成短线段，便于 Pillow 直接绘制成二值 mask。
+    """
+
+    if obj.get("type") != "path":
+        return []
+
+    points: list[tuple[float, float]] = []
+    current: tuple[float, float] | None = None
+    for command in obj.get("path") or []:
+        if not command:
+            continue
+        code = str(command[0]).upper()
+        values = [float(v) for v in command[1:]]
+
+        if code == "M" and len(values) >= 2:
+            current = (values[0], values[1])
+            points.append(current)
+        elif code == "L" and len(values) >= 2:
+            current = (values[0], values[1])
+            points.append(current)
+        elif code == "Q" and current is not None and len(values) >= 4:
+            control = (values[0], values[1])
+            end = (values[2], values[3])
+            points.extend(_sample_quadratic(current, control, end))
+            current = end
+        elif code == "C" and current is not None and len(values) >= 6:
+            control1 = (values[0], values[1])
+            control2 = (values[2], values[3])
+            end = (values[4], values[5])
+            points.extend(_sample_cubic(current, control1, control2, end))
+            current = end
+
+    return points
+
+
+def _sample_quadratic(
+    start: tuple[float, float],
+    control: tuple[float, float],
+    end: tuple[float, float],
+    steps: int = 16,
+) -> list[tuple[float, float]]:
+    """采样二次贝塞尔曲线。"""
+
+    out: list[tuple[float, float]] = []
+    for idx in range(1, steps + 1):
+        t = idx / steps
+        x = (1 - t) ** 2 * start[0] + 2 * (1 - t) * t * control[0] + t**2 * end[0]
+        y = (1 - t) ** 2 * start[1] + 2 * (1 - t) * t * control[1] + t**2 * end[1]
+        out.append((x, y))
+    return out
+
+
+def _sample_cubic(
+    start: tuple[float, float],
+    control1: tuple[float, float],
+    control2: tuple[float, float],
+    end: tuple[float, float],
+    steps: int = 20,
+) -> list[tuple[float, float]]:
+    """采样三次贝塞尔曲线。"""
+
+    out: list[tuple[float, float]] = []
+    for idx in range(1, steps + 1):
+        t = idx / steps
+        x = (
+            (1 - t) ** 3 * start[0]
+            + 3 * (1 - t) ** 2 * t * control1[0]
+            + 3 * (1 - t) * t**2 * control2[0]
+            + t**3 * end[0]
+        )
+        y = (
+            (1 - t) ** 3 * start[1]
+            + 3 * (1 - t) ** 2 * t * control1[1]
+            + 3 * (1 - t) * t**2 * control2[1]
+            + t**3 * end[1]
+        )
+        out.append((x, y))
+    return out
+
+
+def _is_roi_stroke(stroke: str) -> bool:
+    """判断画笔颜色是否为黄色 ROI。"""
+
+    rgb = _parse_rgb(stroke)
+    if rgb is None:
+        return False
+    red, green, blue = rgb
+    return red > 180 and green > 140 and blue < 90
+
+
+def _is_hair_stroke(stroke: str) -> bool:
+    """判断画笔颜色是否为红色毛发标注。"""
+
+    rgb = _parse_rgb(stroke)
+    if rgb is None:
+        return False
+    red, green, blue = rgb
+    return red > 160 and green < 120 and blue < 120
+
+
+def _parse_rgb(stroke: str) -> tuple[int, int, int] | None:
+    """解析 Fabric.js 常见的 `rgba(...)` 或 `#rrggbb` 颜色字符串。"""
+
+    color_text = stroke.strip().lower()
+    if color_text.startswith("#") and len(color_text) >= 7:
+        try:
+            return (
+                int(color_text[1:3], 16),
+                int(color_text[3:5], 16),
+                int(color_text[5:7], 16),
+            )
+        except ValueError:
+            return None
+
+    if color_text.startswith("rgb"):
+        start = color_text.find("(")
+        end = color_text.find(")", start + 1)
+        if start >= 0 and end > start:
+            parts = color_text[start + 1 : end].split(",")[:3]
+            try:
+                return tuple(int(float(part.strip())) for part in parts)  # type: ignore[return-value]
+            except ValueError:
+                return None
+    return None
 
 
 def _run_analysis(img: np.ndarray, roi_boundary: np.ndarray, hair_mask: np.ndarray, repair_hair: bool) -> None:
