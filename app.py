@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import io
+import importlib
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -55,8 +56,8 @@ SRC_DIR = PROJECT_ROOT / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
+import colorroi_analyzer.core as colorroi_core
 from colorroi_analyzer.analysis import analyze_image
-from colorroi_analyzer.core import auto_hair_mask, fill_roi_from_boundary, overlay_masks_from_rgba, to_uint8_image
 
 
 MAX_DISPLAY_WIDTH = 860
@@ -168,7 +169,7 @@ def _make_display_image(img: np.ndarray) -> tuple[Image.Image, float]:
     scale = min(1.0, MAX_DISPLAY_WIDTH / w)
     display_w = int(round(w * scale))
     display_h = int(round(h * scale))
-    pil_img = to_uint8_image(img)
+    pil_img = colorroi_core.to_uint8_image(img)
     if scale < 1:
         pil_img = pil_img.resize((display_w, display_h), Image.Resampling.LANCZOS)
     return pil_img, scale
@@ -206,7 +207,7 @@ def _extract_masks(
     if image_data is None:
         return np.zeros((h, w), dtype=bool), np.zeros((h, w), dtype=bool)
 
-    roi_small, hair_small = overlay_masks_from_rgba(image_data)
+    roi_small, hair_small = colorroi_core.overlay_masks_from_rgba(image_data)
     if scale == 1 and roi_small.shape == (h, w):
         return roi_small, hair_small
 
@@ -424,10 +425,25 @@ def _prepare_hair_mask_for_analysis(
     if manual_hair.any():
         return manual_hair, "manual"
 
-    roi = fill_roi_from_boundary(roi_boundary)
+    roi = colorroi_core.fill_roi_from_boundary(roi_boundary)
     if roi.shape != img.shape[:2] or not roi.any():
         return manual_hair, None
-    return auto_hair_mask(img) & roi, "auto"
+    return _auto_hair_mask(img) & roi, "auto"
+
+
+def _auto_hair_mask(img: np.ndarray) -> np.ndarray:
+    """动态获取自动毛发检测函数，兼容 Streamlit 热更新模块缓存。
+
+    旧 Streamlit 进程有时会缓存修改前的 `colorroi_analyzer.core` 模块，导致顶层
+    `from ... import auto_hair_mask` 在页面刷新时直接失败。这里把函数获取延迟到
+    点击分析时；如果当前模块对象没有该函数，就 reload 一次本地 core 模块再取。
+    """
+
+    detector = getattr(colorroi_core, "auto_hair_mask", None)
+    if detector is None:
+        reloaded_core = importlib.reload(colorroi_core)
+        detector = getattr(reloaded_core, "auto_hair_mask")
+    return detector(img)
 
 
 def _render_previews(img: np.ndarray, roi_boundary: np.ndarray, hair_mask: np.ndarray) -> None:
@@ -436,11 +452,11 @@ def _render_previews(img: np.ndarray, roi_boundary: np.ndarray, hair_mask: np.nd
     analysis = st.session_state.analysis
     display_hair = analysis.hair if analysis is not None else hair_mask
     cols = st.columns(4)
-    cols[0].image(to_uint8_image(img), caption="原始图", use_container_width=True)
+    cols[0].image(colorroi_core.to_uint8_image(img), caption="原始图", use_container_width=True)
     cols[1].image(_make_overlay_preview(img, roi_boundary, display_hair), caption="ROI / 毛发标注", use_container_width=True)
     if analysis is not None:
-        cols[2].image(to_uint8_image(analysis.clean_image), caption="毛发修复后", use_container_width=True)
-        cols[3].image(to_uint8_image(analysis.heatmap), caption="DMDI 热图", use_container_width=True)
+        cols[2].image(colorroi_core.to_uint8_image(analysis.clean_image), caption="毛发修复后", use_container_width=True)
+        cols[3].image(colorroi_core.to_uint8_image(analysis.heatmap), caption="DMDI 热图", use_container_width=True)
     else:
         cols[2].empty()
         cols[3].empty()
@@ -454,7 +470,7 @@ def _make_overlay_preview(img: np.ndarray, roi_boundary: np.ndarray, hair_mask: 
     hair = np.asarray(hair_mask).astype(bool)
     preview[boundary] = np.array([1.0, 0.86, 0.0], dtype=np.float32)
     preview[hair] = np.array([0.90, 0.18, 0.12], dtype=np.float32)
-    return to_uint8_image(preview)
+    return colorroi_core.to_uint8_image(preview)
 
 
 def _render_metrics() -> None:
