@@ -419,10 +419,11 @@ def _render_metrics() -> None:
         return
 
     ratios = analysis.clusters.ratios
+    effective_px = _effective_px(analysis)
     metric_cols = st.columns(6)
     metric_cols[0].metric("ROI 面积", f"{analysis.roi_px} px")
     metric_cols[1].metric("毛发标注", f"{analysis.hair_px} px")
-    metric_cols[2].metric("有效区", f"{analysis.effective_px} px")
+    metric_cols[2].metric("有效区", f"{effective_px} px")
     metric_cols[3].metric("黑", f"{ratios['black'] * 100:.2f}%")
     metric_cols[4].metric("棕", f"{ratios['brown'] * 100:.2f}%")
     metric_cols[5].metric("灰 / 蓝灰 / DMDI", f"{ratios['gray'] * 100:.2f}% / {ratios['blue'] * 100:.2f}% / {analysis.clusters.dmdi:.4f}")
@@ -465,6 +466,7 @@ def _save_record(
 
     ratios = analysis.clusters.ratios
     h, w = img_shape[:2]
+    effective_px = _effective_px(analysis)
     st.session_state.records.append(
         {
             "analysis_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -476,7 +478,7 @@ def _save_record(
             "roi_px": analysis.roi_px,
             "roi_percent": round(analysis.roi_px / (h * w) * 100, 4),
             "hair_px": analysis.hair_px,
-            "effective_px": analysis.effective_px,
+            "effective_px": effective_px,
             "black_percent": round(ratios["black"] * 100, 4),
             "brown_percent": round(ratios["brown"] * 100, 4),
             "gray_percent": round(ratios["gray"] * 100, 4),
@@ -485,6 +487,19 @@ def _save_record(
         }
     )
     st.success("记录已保存。")
+
+
+def _effective_px(analysis) -> int:
+    """返回有效分析像素数，并兼容热更新前的旧 AnalysisResult 对象。
+
+    Streamlit 运行中修改依赖模块后，当前进程可能暂时保留旧版 dataclass 实例。
+    如果旧对象还没有 `effective_px` 字段，就按需求里的定义 `ROI - 毛发` 做
+    兜底计算，避免界面渲染因为热更新状态不一致而报错。
+    """
+
+    if hasattr(analysis, "effective_px"):
+        return int(analysis.effective_px)
+    return max(0, int(getattr(analysis, "roi_px", 0)) - int(getattr(analysis, "hair_px", 0)))
 
 
 def _render_records() -> None:
