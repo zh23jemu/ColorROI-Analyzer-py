@@ -39,6 +39,7 @@ def analyze_image(
     roi_boundary: np.ndarray,
     hair_mask: np.ndarray | None = None,
     repair_hair: bool = True,
+    hair_source_hint: str | None = None,
 ) -> AnalysisResult:
     """根据原图、ROI 边界和毛发标注完成一次 DMDI 分析。
 
@@ -47,6 +48,8 @@ def analyze_image(
         roi_boundary: 黄色手绘边界 mask，函数内部会填充为实心 ROI。
         hair_mask: 红色毛发或遮挡 mask；为空或没有任何像素时自动检测毛发。
         repair_hair: 是否在分析前对红色 mask 做局部修复。
+        hair_source_hint: 调用方已提前准备毛发 mask 时，可传入 `manual` 或 `auto`
+            标记来源，便于界面按 TXT 需求显示毛发来自手动标注还是自动检测。
 
     返回:
         AnalysisResult，包含 ROI、修复后图片、Lab 像素、四分类比例和 DMDI。
@@ -63,7 +66,7 @@ def analyze_image(
     hair = np.zeros((h, w), dtype=bool) if hair_mask is None else np.asarray(hair_mask).astype(bool)
     if hair.shape != (h, w):
         raise ValueError("毛发 mask 尺寸必须与图片尺寸一致。")
-    hair_source = "manual"
+    hair_source = hair_source_hint or "manual"
     if not hair.any():
         hair = auto_hair_mask(image) & roi
         hair_source = "auto"

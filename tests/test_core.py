@@ -63,3 +63,22 @@ def test_analyze_uses_auto_hair_when_manual_mask_empty():
     assert result.roi_px > 50
     assert result.effective_px <= result.roi_px
     assert result.hair_px >= 0
+    assert result.hair_source == "auto"
+
+
+def test_analyze_preserves_auto_hair_source_hint():
+    img = load_rgb_image("0.jpg")
+    h, w = img.shape[:2]
+    yy, xx = np.mgrid[:h, :w]
+    center_y, center_x = h / 2, w / 2
+    ellipse = ((xx - center_x) ** 2 / (w * 0.28) ** 2 + (yy - center_y) ** 2 / (h * 0.28) ** 2) <= 1
+    boundary = ellipse ^ np.logical_and(
+        ((xx - center_x) ** 2 / (w * 0.25) ** 2 + (yy - center_y) ** 2 / (h * 0.25) ** 2) <= 1,
+        ellipse,
+    )
+    hair = (np.abs(xx - center_x) < 3) & (yy > h * 0.35) & (yy < h * 0.65)
+
+    result = analyze_image(img, boundary, hair, hair_source_hint="auto")
+
+    assert result.hair_px > 0
+    assert result.hair_source == "auto"

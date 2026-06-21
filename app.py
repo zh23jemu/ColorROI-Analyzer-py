@@ -56,7 +56,7 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from colorroi_analyzer.analysis import analyze_image
-from colorroi_analyzer.core import overlay_masks_from_rgba, to_uint8_image
+from colorroi_analyzer.core import auto_hair_mask, fill_roi_from_boundary, overlay_masks_from_rgba, to_uint8_image
 
 
 MAX_DISPLAY_WIDTH = 860
@@ -116,7 +116,8 @@ def main() -> None:
         scale=scale,
     )
     if run_analysis:
-        _run_analysis(img, roi_boundary, hair_mask, repair_hair)
+        hair_mask, hair_source = _prepare_hair_mask_for_analysis(img, roi_boundary, hair_mask)
+        _run_analysis(img, roi_boundary, hair_mask, repair_hair, hair_source)
 
     _render_previews(img, roi_boundary, hair_mask)
     _render_metrics()
@@ -384,15 +385,49 @@ def _parse_rgb(stroke: str) -> tuple[int, int, int] | None:
     return None
 
 
-def _run_analysis(img: np.ndarray, roi_boundary: np.ndarray, hair_mask: np.ndarray, repair_hair: bool) -> None:
+def _run_analysis(
+    img: np.ndarray,
+    roi_boundary: np.ndarray,
+    hair_mask: np.ndarray,
+    repair_hair: bool,
+    hair_source: str | None = None,
+) -> None:
     """执行一次 ROI 分析，并把结果写入 session_state。"""
 
     try:
-        st.session_state.analysis = analyze_image(img, roi_boundary, hair_mask, repair_hair=repair_hair)
+        st.session_state.analysis = analyze_image(
+            img,
+            roi_boundary,
+            hair_mask,
+            repair_hair=repair_hair,
+            hair_source_hint=hair_source,
+        )
         st.success("分析完成。")
     except Exception as exc:
         st.session_state.analysis = None
         st.warning(str(exc))
+
+
+def _prepare_hair_mask_for_analysis(
+    img: np.ndarray,
+    roi_boundary: np.ndarray,
+    hair_mask: np.ndarray,
+) -> tuple[np.ndarray, str | None]:
+    """按 TXT 需求在界面层准备最终毛发 mask。
+
+    如果用户已经用红色画笔标注毛发，则优先使用手动 mask；如果没有红色标注，
+    这里直接执行自动毛发检测，并把结果限制在填充后的 ROI 内。这样 Streamlit
+    界面无需等待后端 dataclass 字段热更新，也能立即显示自动检测出的毛发区域。
+    """
+
+    manual_hair = np.asarray(hair_mask).astype(bool)
+    if manual_hair.any():
+        return manual_hair, "manual"
+
+    roi = fill_roi_from_boundary(roi_boundary)
+    if roi.shape != img.shape[:2] or not roi.any():
+        return manual_hair, None
+    return auto_hair_mask(img) & roi, "auto"
 
 
 def _render_previews(img: np.ndarray, roi_boundary: np.ndarray, hair_mask: np.ndarray) -> None:
