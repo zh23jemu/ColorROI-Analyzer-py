@@ -57,7 +57,7 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 import colorroi_analyzer.core as colorroi_core
-from colorroi_analyzer.analysis import analyze_image
+import colorroi_analyzer.analysis as colorroi_analysis
 
 
 MAX_DISPLAY_WIDTH = 860
@@ -396,17 +396,56 @@ def _run_analysis(
     """执行一次 ROI 分析，并把结果写入 session_state。"""
 
     try:
-        st.session_state.analysis = analyze_image(
+        st.session_state.analysis = _analyze_image(img, roi_boundary, hair_mask, repair_hair, hair_source)
+        st.success("分析完成。")
+    except Exception as exc:
+        st.session_state.analysis = None
+        st.warning(str(exc))
+
+
+def _analyze_image(
+    img: np.ndarray,
+    roi_boundary: np.ndarray,
+    hair_mask: np.ndarray,
+    repair_hair: bool,
+    hair_source: str | None,
+):
+    """动态调用分析函数，兼容 Streamlit 热更新保留的旧函数签名。"""
+
+    analyzer = getattr(colorroi_analysis, "analyze_image")
+    try:
+        return analyzer(
             img,
             roi_boundary,
             hair_mask,
             repair_hair=repair_hair,
             hair_source_hint=hair_source,
         )
-        st.success("分析完成。")
-    except Exception as exc:
-        st.session_state.analysis = None
-        st.warning(str(exc))
+    except TypeError as exc:
+        if "hair_source_hint" not in str(exc):
+            raise
+
+    reloaded_analysis = importlib.reload(colorroi_analysis)
+    analyzer = getattr(reloaded_analysis, "analyze_image")
+    try:
+        return analyzer(
+            img,
+            roi_boundary,
+            hair_mask,
+            repair_hair=repair_hair,
+            hair_source_hint=hair_source,
+        )
+    except TypeError as exc:
+        if "hair_source_hint" not in str(exc):
+            raise
+        # 极端情况下，如果运行进程仍拿到旧签名，就退回旧调用，并在返回对象上
+        # 动态补充来源字段，保证 UI 能继续展示本轮分析结果。
+        result = analyzer(img, roi_boundary, hair_mask, repair_hair=repair_hair)
+        try:
+            object.__setattr__(result, "hair_source", hair_source or "unknown")
+        except Exception:
+            pass
+        return result
 
 
 def _prepare_hair_mask_for_analysis(
