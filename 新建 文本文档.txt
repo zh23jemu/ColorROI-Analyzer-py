@@ -1,0 +1,565 @@
+# ===================================================================
+# NDAP 3.0 - 圈选分析（自动纠正行列颠倒）
+# ===================================================================
+
+library(shiny)
+library(shinythemes)
+library(EBImage)
+library(jpeg)
+library(png)
+library(plotly)
+library(cluster)
+library(base64enc)
+
+load_image <- function(path) {
+  ext <- tolower(tools::file_ext(path))
+  img <- NULL
+  tryCatch({
+    if (ext %in% c("jpg", "jpeg")) img <- jpeg::readJPEG(path)
+    else if (ext == "png") img <- png::readPNG(path)
+    else img <- EBImage::readImage(path)
+  }, error = function(e) NULL)
+  
+  if (is.null(img)) {
+    f <- file(path, "rb")
+    h <- readBin(f, raw(), 8)
+    close(f)
+    if (h[1] == 0xff && h[2] == 0xd8) img <- jpeg::readJPEG(path)
+    else if (h[1] == 0x89) img <- png::readPNG(path)
+  }
+  
+  if (is.null(img)) stop("无法读取图片")
+  
+  if (length(dim(img)) == 2) {
+    img <- EBImage::Image(img, colormode = EBImage::Grayscale)
+    img <- rgbImage(img, img, img)
+  } else {
+    img <- EBImage::Image(img[,,1:min(3, dim(img)[3])], colormode = EBImage::Color)
+  }
+  return(img)
+}
+
+match_dims <- function(mat, th, tw) {
+  h <- nrow(mat); w <- ncol(mat)
+  if (h == th && w == tw) return(mat)
+  out <- matrix(0, th, tw)
+  uh <- min(h, th); uw <- min(w, tw)
+  out[1:uh, 1:uw] <- mat[1:uh, 1:uw]
+  return(out)
+}
+
+fill_roi <- function(bd) {
+  if (sum(bd) == 0) return(bd)
+  
+  h <- nrow(bd); w <- ncol(bd)
+  filled_h <- matrix(0, h, w)
+  filled_v <- matrix(0, h, w)
+  
+  for (i in 1:h) {
+    b <- which(bd[i,] > 0)
+    if (length(b) >= 2) {
+      left <- min(b); right <- max(b)
+      if (right > left + 1) filled_h[i, left:right] <- 1
+    }
+  }
+  
+  for (j in 1:w) {
+    b <- which(bd[,j] > 0)
+    if (length(b) >= 2) {
+      top <- min(b); bottom <- max(b)
+      if (bottom > top + 1) filled_v[top:bottom, j] <- 1
+    }
+  }
+  
+  filled <- filled_h * filled_v
+  
+  if (sum(filled) > 0) {
+    brush <- makeBrush(3, shape = "disc")
+    img_tmp <- EBImage::Image(filled, colormode = EBImage::Grayscale)
+    dilated <- EBImage::dilate(img_tmp, brush)
+    filled <- as.matrix(dilated)
+  }
+  
+  if (sum(filled) == 0) filled <- filled_h
+  
+  return(filled)
+}
+
+remove_hair <- function(img, mask) {
+  if (sum(mask) == 0) return(img)
+  filt <- img
+  for (ch in 1:3) {
+    filt[,,ch] <- medianFilter(img[,,ch], 3)
+  }
+  out <- img
+  for (ch in 1:3) {
+    mat_orig <- as.matrix(img[,,ch])
+    mat_filt <- as.matrix(filt[,,ch])
+    mat_mask <- as.matrix(mask)
+    mat_orig[mat_mask > 0] <- mat_filt[mat_mask > 0]
+    out[,,ch] <- mat_orig
+  }
+  return(out)
+}
+
+auto_hair <- function(img) {
+  g <- channel(img, "gray")
+  b <- makeBrush(15, shape = "disc")
+  c <- closing(g, b)
+  bh <- c - g
+  bh <- (bh - min(bh)) / (max(bh) - min(bh) + 1e-10)
+  t <- otsu(bh)
+  h <- (bh > t) * 1
+  h <- opening(h, makeBrush(3, shape = "disc"))
+  return(h)
+}
+
+rgb2lab <- function(r, g, b) {
+  r <- r/255; g <- g/255; b <- b/255
+  r <- ifelse(r <= 0.04045, r/12.92, ((r+0.055)/1.055)^2.4)
+  g <- ifelse(g <= 0.04045, g/12.92, ((g+0.055)/1.055)^2.4)
+  b <- ifelse(b <= 0.04045, b/12.92, ((b+0.055)/1.055)^2.4)
+  
+  X <- r*0.4124 + g*0.3576 + b*0.1805
+  Y <- r*0.2126 + g*0.7152 + b*0.0722
+  Z <- r*0.0193 + g*0.1192 + b*0.9505
+  
+  X <- X/0.95047; Y <- Y/1.00000; Z <- Z/1.08883
+  f <- function(t) ifelse(t > 0.008856, t^(1/3), 7.787*t + 16/116)
+  L <- 116*f(Y) - 16
+  a <- 500*(f(X) - f(Y))
+  b_ <- 200*(f(Y) - f(Z))
+  data.frame(L = L, a = a, b = b_)
+}
+
+cluster_colors <- function(lab, k = 4) {
+  if (nrow(lab) < k) return(NULL)
+  if (nrow(lab) > 5000) {
+    set.seed(42)
+    lab <- lab[sample(nrow(lab), 5000), ]
+  }
+  km <- kmeans(lab[,c("L","a","b")], centers = k, nstart = 10)
+  centers <- km$centers
+  n <- nrow(lab)
+  
+  ord <- order(centers[,"L"])
+  black <- sum(km$cluster == ord[1]) / n
+  gray <- if (k >= 3) sum(km$cluster == ord[2]) / n else 0
+  brown <- 0; blue <- 0
+  
+  if (k == 4) {
+    rem <- setdiff(1:4, ord[1:2])
+    if (length(rem) == 2) {
+      if (centers[rem[1],"b"] < centers[rem[2],"b"]) {
+        blue <- sum(km$cluster == rem[1]) / n
+        brown <- sum(km$cluster == rem[2]) / n
+      } else {
+        blue <- sum(km$cluster == rem[2]) / n
+        brown <- sum(km$cluster == rem[1]) / n
+      }
+    }
+  }
+  
+  list(k = k, black = black, brown = brown, gray = gray, blue = blue,
+       dmdi = round(0*black + 1*brown + 2*gray + 3*blue, 3))
+}
+
+# ========== UI ==========
+ui <- fluidPage(
+  theme = shinytheme("flatly"),
+  titlePanel("NDAP 3.0 - 圈选分析（行列自动纠正）"),
+  
+  sidebarLayout(
+    sidebarPanel(
+      width = 3,
+      fileInput("img", "上传图片", accept = c("image/jpeg", "image/png")),
+      hr(),
+      
+      h4("画笔"),
+      radioButtons("mode", NULL,
+                   choices = c("圈边界 (绿)" = "roi", 
+                               "标毛发 (红)" = "hair",
+                               "橡皮擦" = "erase"),
+                   selected = "roi"),
+      sliderInput("size", "粗细", 3, 30, 10),
+      helpText("绿色画圈，红色标毛发"),
+      actionButton("clear", "清空", class = "btn-warning btn-sm"),
+      
+      hr(),
+      h4("分析"),
+      actionButton("go", "开始分析", class = "btn-success btn-block"),
+      
+      hr(),
+      h4("患者信息"),
+      textInput("name", "姓名", value = ""),
+      radioButtons("gender", "性别", choices = c("男", "女"), inline = TRUE),
+      textInput("id", "ID", value = ""),
+      radioButtons("hair_clinical", "有无毛发", choices = c("有", "无"), inline = TRUE),
+      radioButtons("pattern", "结构模式",
+                   choices = c("Globular", "Homogeneous", "Reticular", "Multicomponent"),
+                   inline = FALSE),
+      actionButton("save", "保存记录", class = "btn-primary btn-block"),
+      
+      hr(),
+      h4("当前结果"),
+      verbatimTextOutput("info"),
+      verbatimTextOutput("result")
+    ),
+    
+    mainPanel(
+      width = 9,
+      h4("绘制区"),
+      uiOutput("canvas_ui"),
+      br(),
+      fluidRow(
+        column(3, h5("原始图"), imageOutput("orig", height = "200px")),
+        column(3, h5("圈选区域"), imageOutput("roi_img", height = "200px")),
+        column(3, h5("去毛发"), imageOutput("clean", height = "200px")),
+        column(3, h5("热图"), imageOutput("heat", height = "200px"))
+      ),
+      plotlyOutput("scatter", height = "300px"),
+      hr(),
+      h4("已保存记录"),
+      tableOutput("records_table"),
+      downloadButton("export_csv", "导出CSV")
+    )
+  )
+)
+
+# ========== Server ==========
+server <- function(input, output, session) {
+  
+  rv <- reactiveValues(
+    img = NULL, roi = NULL, hair = NULL, 
+    clean = NULL, result = NULL,
+    records = data.frame()
+  )
+  
+  observeEvent(input$img, {
+    req(input$img)
+    tryCatch({
+      img <- load_image(input$img$datapath)
+      rv$img <- img
+      h <- dim(img)[1]; w <- dim(img)[2]
+      rv$roi <- matrix(0, h, w)
+      rv$hair <- matrix(0, h, w)
+      rv$clean <- NULL
+      rv$result <- NULL
+      showNotification(paste("已加载", h, "x", w), type = "message")
+    }, error = function(e) showNotification(paste("错误:", e$message), type = "error"))
+  })
+  
+  # ========== 画布 ==========
+  output$canvas_ui <- renderUI({
+    req(rv$img)
+    
+    orig_h <- dim(rv$img)[1]  # 高（行数）
+    orig_w <- dim(rv$img)[2]  # 宽（列数）
+    
+    disp_w <- orig_w
+    disp_h <- orig_h
+    max_disp_w <- 800
+    if (disp_w > max_disp_w) {
+      scale <- max_disp_w / disp_w
+      disp_w <- max_disp_w
+      disp_h <- round(orig_h * scale)
+    }
+    
+    bg <- tempfile(fileext = ".png")
+    writeImage(rv$img, bg)
+    b64 <- base64enc::dataURI(file = bg, mime = "image/png")
+    
+    tagList(
+      tags$canvas(id = "cvs", width = disp_w, height = disp_h,
+                  style = "border:2px solid #333; cursor:crosshair; max-width:100%;"),
+      tags$script(HTML(sprintf('
+        var c = document.getElementById("cvs");
+        var ctx = c.getContext("2d");
+        var drawing = false;
+        var mode = "roi";
+        var brushSize = %d;
+        var bgImg = new Image();
+        var lastDataURL = "";
+
+        function redraw() {
+          ctx.clearRect(0, 0, c.width, c.height);
+          ctx.drawImage(bgImg, 0, 0, c.width, c.height);
+        }
+        bgImg.onload = redraw;
+        bgImg.src = "%s";
+
+        function getColor() {
+          if (mode === "erase") return "rgba(0,0,0,0)";
+          if (mode === "roi") return "rgba(0, 255, 0, 1.0)";
+          return "rgba(255, 0, 0, 1.0)";
+        }
+
+        function drawDot(px, py) {
+          ctx.beginPath();
+          ctx.arc(px, py, brushSize/2, 0, 2 * Math.PI);
+          ctx.fillStyle = getColor();
+          ctx.fill();
+        }
+
+        function sendCanvasData() {
+          var dataURL = c.toDataURL("image/png");
+          if (dataURL !== lastDataURL) {
+            lastDataURL = dataURL;
+            Shiny.setInputValue("canvas", dataURL, {priority: "event"});
+          }
+        }
+
+        c.addEventListener("mousedown", function(e) {
+          drawing = true;
+          var rect = c.getBoundingClientRect();
+          var x = (e.clientX - rect.left) * c.width / rect.width;
+          var y = (e.clientY - rect.top) * c.height / rect.height;
+          drawDot(x, y);
+        });
+
+        c.addEventListener("mousemove", function(e) {
+          if (!drawing) return;
+          var rect = c.getBoundingClientRect();
+          var x = (e.clientX - rect.left) * c.width / rect.width;
+          var y = (e.clientY - rect.top) * c.height / rect.height;
+          drawDot(x, y);
+        });
+
+        c.addEventListener("mouseup", function() {
+          drawing = false;
+          sendCanvasData();
+        });
+
+        c.addEventListener("mouseleave", function() {
+          if (drawing) {
+            drawing = false;
+            sendCanvasData();
+          }
+        });
+
+        $("#clear").click(function() {
+          redraw();
+          sendCanvasData();
+        });
+
+        Shiny.addCustomMessageHandler("set_mode", function(v) { mode = v; });
+        Shiny.addCustomMessageHandler("set_size", function(v) { brushSize = v; });
+      ', input$size, b64)))
+    )
+  })
+  
+  observeEvent(input$mode, session$sendCustomMessage("set_mode", input$mode))
+  observeEvent(input$size, session$sendCustomMessage("set_size", input$size))
+  
+  # ========== 处理画布（自动纠正行列颠倒） ==========
+  observeEvent(input$canvas, {
+    req(input$canvas, rv$img)
+    if (nchar(input$canvas) < 100) return()
+    
+    tryCatch({
+      b64 <- sub("^data:image/png;base64,", "", input$canvas)
+      raw <- base64enc::base64decode(b64)
+      tmp <- tempfile(fileext = ".png")
+      writeBin(raw, tmp)
+      
+      cimg <- EBImage::readImage(tmp)
+      unlink(tmp)
+      
+      d <- dim(cimg)
+      if (length(d) == 2) {
+        cimg <- rgbImage(cimg, cimg, cimg)
+      } else if (d[3] >= 3) {
+        cimg <- cimg[,,1:3]
+      }
+      
+      # 提取通道
+      R <- as.matrix(cimg[,,1])
+      G <- as.matrix(cimg[,,2])
+      B <- as.matrix(cimg[,,3])
+      
+      cat("[DEBUG] Canvas矩阵:", nrow(R), "行 x", ncol(R), "列\n")
+      cat("[DEBUG] 原图尺寸:", dim(rv$img)[1], "行 x", dim(rv$img)[2], "列\n")
+      
+      target_h <- dim(rv$img)[1]
+      target_w <- dim(rv$img)[2]
+      
+      # ---------- 关键修正：检测行列是否颠倒并转置 ----------
+      if (nrow(R) == target_w && ncol(R) == target_h) {
+        R <- t(R); G <- t(G); B <- t(B)
+        cat("[DEBUG] 检测到尺寸转置，已自动纠正\n")
+      }
+      
+      # 严格绿色检测
+      green <- (G > 0.5) & (G > R + 0.15) & (G > B + 0.15)
+      red <- (R > 0.5) & (R > G + 0.15) & (R > B + 0.15)
+      
+      green_mask <- as.matrix(green) * 1
+      red_mask <- as.matrix(red) * 1
+      
+      cat("[DEBUG] 绿色像素:", sum(green_mask), "红色像素:", sum(red_mask), "\n")
+      
+      roi <- fill_roi(green_mask)
+      cat("[DEBUG] 填充后ROI:", sum(roi), "\n")
+      
+      roi <- match_dims(roi, target_h, target_w)
+      red_mask <- match_dims(red_mask, target_h, target_w)
+      
+      cat("[DEBUG] 对齐后ROI:", nrow(roi), "行 x", ncol(roi), "列 =", sum(roi), "像素\n")
+      
+      rv$roi <- roi
+      rv$hair <- red_mask
+      
+    }, error = function(e) {
+      message("画布错误: ", e$message)
+      showNotification(paste("画布错误:", e$message), type = "error")
+    })
+  })
+  
+  # ========== 分析 ==========
+  observeEvent(input$go, {
+    req(rv$img, rv$roi)
+    if (sum(rv$roi) < 50) {
+      showNotification("请先画出绿色边界", type = "warning")
+      return()
+    }
+    
+    withProgress(message = "分析中...", {
+      if (sum(rv$hair) > 0) {
+        rv$clean <- remove_hair(rv$img, rv$hair)
+      } else {
+        h <- auto_hair(rv$img) * rv$roi
+        rv$hair <- h
+        rv$clean <- remove_hair(rv$img, h)
+      }
+      
+      valid_mask <- (rv$roi > 0) & (rv$hair == 0)
+      idx <- which(valid_mask)
+      
+      if (length(idx) == 0) {
+        showNotification("ROI内无有效像素", type = "warning")
+        return()
+      }
+      
+      lab <- rgb2lab(
+        as.vector(rv$clean[,,1])[idx] * 255,
+        as.vector(rv$clean[,,2])[idx] * 255,
+        as.vector(rv$clean[,,3])[idx] * 255
+      )
+      
+      rv$result <- cluster_colors(lab, k = 4)
+      showNotification("分析完成!", type = "message")
+    })
+  })
+  
+  # ========== 输出 ==========
+  output$orig <- renderImage({
+    req(rv$img)
+    f <- tempfile(fileext = ".png")
+    writeImage(rv$img, f)
+    list(src = f, contentType = "image/png", width = "100%", height = "auto")
+  }, deleteFile = TRUE)
+  
+  output$roi_img <- renderImage({
+    req(rv$img, rv$roi)
+    f <- tempfile(fileext = ".png")
+    roi <- match_dims(rv$roi, dim(rv$img)[1], dim(rv$img)[2])
+    overlay <- paintObjects(roi, rv$img, col = "#00FF00")
+    writeImage(overlay, f)
+    list(src = f, contentType = "image/png", width = "100%", height = "auto")
+  }, deleteFile = TRUE)
+  
+  output$clean <- renderImage({
+    req(rv$clean)
+    f <- tempfile(fileext = ".png")
+    writeImage(rv$clean, f)
+    list(src = f, contentType = "image/png", width = "100%", height = "auto")
+  }, deleteFile = TRUE)
+  
+  output$heat <- renderImage({
+    req(rv$roi, rv$result)
+    h <- dim(rv$img)[1]; w <- dim(rv$img)[2]
+    hm <- array(0.5, c(h, w, 3))
+    
+    d <- rv$result$dmdi
+    col <- if (d < 1) c(0,0,1) else if (d < 2) c(0,1,1) else if (d < 2.5) c(1,1,0) else c(1,0,0)
+    
+    valid_mask <- (rv$roi > 0) & (rv$hair == 0)
+    for (i in 1:3) hm[,,i][valid_mask] <- col[i]
+    for (i in 1:3) hm[,,i][rv$hair > 0] <- 0
+    
+    f <- tempfile(fileext = ".png")
+    writeImage(Image(hm, colormode = Color), f)
+    list(src = f, contentType = "image/png", width = "100%", height = "auto")
+  }, deleteFile = TRUE)
+  
+  output$scatter <- renderPlotly({
+    req(rv$clean, rv$roi)
+    valid_mask <- (rv$roi > 0) & (rv$hair == 0)
+    idx <- which(valid_mask)
+    lab <- rgb2lab(
+      as.vector(rv$clean[,,1])[idx] * 255,
+      as.vector(rv$clean[,,2])[idx] * 255,
+      as.vector(rv$clean[,,3])[idx] * 255
+    )
+    plot_ly(x = lab$a, y = lab$L, type = "scatter", mode = "markers",
+            marker = list(size = 2, opacity = 0.4)) %>%
+      layout(xaxis = list(title = "a*"), yaxis = list(title = "L*"))
+  })
+  
+  output$info <- renderPrint({
+    req(rv$roi)
+    cat("ROI:", sum(rv$roi), "px (", round(sum(rv$roi)/length(rv$roi)*100,1), "%)\n")
+    cat("毛发:", sum(rv$hair), "px\n")
+    cat("有效区:", sum((rv$roi > 0) & (rv$hair == 0)), "px\n")
+  })
+  
+  output$result <- renderPrint({
+    req(rv$result)
+    r <- rv$result
+    cat("黑:", round(r$black*100,1), "% ")
+    cat("棕:", round(r$brown*100,1), "% ")
+    cat("灰:", round(r$gray*100,1), "% ")
+    cat("蓝:", round(r$blue*100,1), "%\n")
+    cat("DMDI:", r$dmdi, "\n")
+  })
+  
+  observeEvent(input$save, {
+    if (is.null(rv$result) || is.null(rv$roi)) {
+      showNotification("请先分析", type = "warning")
+      return()
+    }
+    if (input$name == "" || input$id == "") {
+      showNotification("请填写姓名和ID", type = "warning")
+      return()
+    }
+    
+    rec <- data.frame(
+      timestamp = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+      name = input$name, gender = input$gender, id = input$id,
+      hair_clinical = input$hair_clinical, pattern = input$pattern,
+      roi_px = sum(rv$roi), roi_percent = round(sum(rv$roi)/length(rv$roi)*100, 1),
+      hair_px = sum(rv$hair),
+      black = round(rv$result$black*100, 1), brown = round(rv$result$brown*100, 1),
+      gray = round(rv$result$gray*100, 1), blue = round(rv$result$blue*100, 1),
+      dmdi = rv$result$dmdi, stringsAsFactors = FALSE
+    )
+    rv$records <- rbind(rv$records, rec)
+    showNotification("已保存", type = "success")
+  })
+  
+  output$records_table <- renderTable({ rv$records })
+  
+  output$export_csv <- downloadHandler(
+    filename = function() { paste0("records_", Sys.Date(), ".csv") },
+    content = function(file) {
+      if (nrow(rv$records) == 0) {
+        write.csv(data.frame(Message = "无记录"), file, row.names = FALSE)
+      } else {
+        write.csv(rv$records, file, row.names = FALSE)
+      }
+    }
+  )
+}
+
+shinyApp(ui, server)
+

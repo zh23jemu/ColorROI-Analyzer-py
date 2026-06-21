@@ -1,0 +1,28 @@
+# Python 本地环境与缓存
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Streamlit / 本地运行态
+.streamlit/secrets.toml
+
+# 构建与打包输出
+build/
+dist/
+*.egg-info/
+
+# 日志和系统文件
+*.log
+.DS_Store
+Thumbs.db
+
+# R 旧项目本地运行态，仅用于保留历史素材时避免误提交
+.Rhistory
+.RData
+.Ruserdata
+rsconnect/
