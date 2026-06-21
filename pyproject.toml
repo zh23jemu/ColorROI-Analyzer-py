@@ -1,0 +1,26 @@
+[project]
+name = "colorroi-analyzer"
+version = "0.1.0"
+description = "Python 重建版 ColorROI Analyzer，用于交互式 ROI 颜色分析和 DMDI 计算。"
+readme = "README.md"
+requires-python = ">=3.11,<3.13"
+dependencies = [
+  "numpy>=1.26",
+  "pandas>=2.2",
+  "pillow>=10.3",
+  "plotly>=5.22",
+  "scikit-image>=0.23",
+  "scikit-learn>=1.5",
+  "scipy>=1.13",
+  "streamlit>=1.35",
+  "streamlit-drawable-canvas>=0.9.3",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.2",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

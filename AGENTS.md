@@ -12,7 +12,7 @@
 
 ## 当前架构
 
-当前为 Python 重建初始阶段，已迁移必要样例图片、测试产物和文档参考资料。后续计划建立 `src/colorroi_analyzer/` 核心算法包、Streamlit 应用入口和测试脚本。
+当前已建立 `src/colorroi_analyzer/` 核心算法包，并将 R 版的图片读取、ROI 边界填充、毛发局部修复、RGB 到 Lab、KMeans 四分类、DMDI 计算和热图生成迁移到 Python。`scripts/` 中已提供冒烟测试、图片目录检查和人工复核表生成脚本，`tests/` 中已提供核心算法 pytest 测试。Streamlit 交互界面仍待实现。
 
 ## 开发规范
 
@@ -24,31 +24,35 @@
 
 ## TODO
 
-- 建立 Python 包结构和依赖文件。
-- 迁移 R 版核心算法到 Python。
 - 建立 Streamlit 交互界面。
-- 增加冒烟测试、图片检查和复核表生成脚本。
-- 运行本地验证并修正文档。
+- 对比 R 版端到端样例结果，继续校准 Python 版默认 ROI 和颜色标签输出。
+- 完善 README 中的应用启动说明。
 
 ## Current Status
 
-已初始化 Python 重建目录，复制原项目的样例图片、测试产物和参考文档，并创建 Python 项目的 README、.gitignore 和项目记忆文件。
+已完成 Python 核心计算层迁移，创建本地 `.venv` 并安装项目依赖。`scripts/smoke_test.py` 已跑通，8 张 `pics/` 示例图片均可读取，pytest 核心测试通过。
 
 ## Recent Changes
 
 - 从原 R 项目复制 `pics/`、`test-artifacts/`、`docs/`、`0.jpg`、`1.jpg` 和早期原型文本。
 - 创建 Python 项目初始 `README.md`。
 - 创建贴合当前 Python/Streamlit 项目的 `.gitignore`。
+- 新增 `pyproject.toml` 和 `requirements.txt`，声明 Python 3.11+ 依赖和开发测试依赖。
+- 新增 `src/colorroi_analyzer/core.py` 和 `analysis.py`，迁移 ROI 填充、毛发修复、Lab 四分类、DMDI 和热图生成逻辑。
+- 新增 `scripts/smoke_test.py`、`scripts/inspect_images.py` 和 `scripts/create_review_sheet.py`。
+- 新增 `tests/test_core.py`，覆盖 ROI 填充和样例图核心分析冒烟流程。
+- 使用 `.venv\Scripts\python.exe scripts\smoke_test.py`、`.venv\Scripts\python.exe scripts\inspect_images.py` 和 `.venv\Scripts\python.exe -m pytest` 完成验证。
 
 ## Next TODO
 
-- 添加 Python 依赖声明、核心算法模块和基础测试。
-- 将 R 版 ROI 填充、毛发修复、Lab 四分类和 DMDI 计算迁移到 Python。
+- 实现 Streamlit 交互应用入口，支持上传图片、画 ROI/毛发、分析、保存记录和导出 CSV。
+- 将 Python 版界面跑起来并做浏览器端人工流程复核。
 
 ## Open Issues
 
 - 尚未实现 Python 应用入口。
-- 尚未验证 Python 依赖和核心算法输出与 R 版一致性。
+- 当前 Windows 终端可能以非 UTF-8 编码显示中文脚本输出，计算结果不受影响。
+- Python 版核心算法已通过冒烟测试，但尚未完成与 R 版同一手绘 ROI 的逐项端到端对照。
 
 ## Architecture Decisions
 
