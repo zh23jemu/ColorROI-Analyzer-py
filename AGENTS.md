@@ -29,7 +29,7 @@
 
 ## Current Status
 
-已完成 Python 核心计算层迁移和 Streamlit 应用入口实现，创建本地 `.venv` 并安装项目依赖。`scripts/smoke_test.py` 已跑通，8 张 `pics/` 示例图片均可读取，pytest 核心测试通过。已启动 `.venv\Scripts\python.exe -m streamlit run app.py --server.address 127.0.0.1 --server.port 8501`，并确认 `http://127.0.0.1:8501` 返回 200。上传图片时报错 `AttributeError: module 'streamlit.elements.image' has no attribute 'image_to_url'` 以及后续 `AttributeError: 'int' object has no attribute 'width'` 的问题已通过 Streamlit 兼容 shim 修复：shim 会提供 `streamlit-drawable-canvas` 旧签名所需的 `image_to_url(image, width, ...)` 包装器，并把整数宽度转换为新版 Streamlit 需要的 `LayoutConfig`。依赖约束也已收紧为 `streamlit>=1.35,<1.40`，避免新环境自动安装到不兼容版本。已修复用户画出闭合黄色 ROI 但程序提示“ROI 内有效像素过少”的问题：应用现在优先从 `canvas_result.json_data` 的 Fabric 手绘路径对象重建 ROI/毛发 mask，不再优先从背景图和标注合成后的截图按颜色猜测。已按 TXT 原始需求补齐自动毛发检测：当用户没有红色手动标注时，分析流程会自动执行 black-hat + Otsu + opening 的毛发候选检测，并在 ROI 内生成毛发 mask。已修复 Streamlit 热更新后旧 `AnalysisResult` 对象缺少 `effective_px` 字段导致的指标渲染报错，界面会用 `roi_px - hair_px` 兜底计算有效区。已修复自动毛发检测结果在 UI 中不明显的问题：分析结果现在记录 `hair_source`，指标显示“毛发标注（自动/手动）”，预览图使用分析后的 `analysis.hair`，上传文件变化时会清空旧分析结果。为避免 Streamlit 热更新导致后端自动兜底未反映到界面，app 层点击分析前会显式准备最终毛发 mask：手动红色 mask 非空则用手动，否则立刻执行自动毛发检测并传入分析函数。已修复刷新页面时顶层导入 `auto_hair_mask` 失败的问题：`app.py` 不再从 `core` 顶层直接导入该函数，而是通过 `colorroi_core` 模块动态获取；若旧 Streamlit 进程缓存模块缺少函数，会 reload 本地 core 模块再调用。已修复旧 Streamlit 进程缓存 `analyze_image()` 旧签名导致 `hair_source_hint` 参数报错的问题：app 层改为动态调用分析模块，必要时 reload `analysis.py`，极端旧签名下退回旧调用并补来源字段。结果指标区已拆成两行显示：第一行展示 ROI 面积、毛发标注和有效区，第二行单独展示黑、棕、灰、蓝灰和 DMDI，避免右侧面板中“灰/蓝灰/DMDI”被截断。
+已完成 Python 核心计算层迁移和 Streamlit 应用入口实现，创建本地 `.venv` 并安装项目依赖。`scripts/smoke_test.py` 已跑通，8 张 `pics/` 示例图片均可读取，pytest 核心测试通过。已启动 `.venv\Scripts\python.exe -m streamlit run app.py --server.address 127.0.0.1 --server.port 8501`，并确认 `http://127.0.0.1:8501` 返回 200。上传图片时报错 `AttributeError: module 'streamlit.elements.image' has no attribute 'image_to_url'` 以及后续 `AttributeError: 'int' object has no attribute 'width'` 的问题已通过 Streamlit 兼容 shim 修复：shim 会提供 `streamlit-drawable-canvas` 旧签名所需的 `image_to_url(image, width, ...)` 包装器，并把整数宽度转换为新版 Streamlit 需要的 `LayoutConfig`。依赖约束也已收紧为 `streamlit>=1.35,<1.40`，避免新环境自动安装到不兼容版本。已修复用户画出闭合黄色 ROI 但程序提示“ROI 内有效像素过少”的问题：应用现在优先从 `canvas_result.json_data` 的 Fabric 手绘路径对象重建 ROI/毛发 mask，不再优先从背景图和标注合成后的截图按颜色猜测。已按 TXT 原始需求补齐自动毛发检测：当用户没有红色手动标注时，分析流程会自动执行 black-hat + Otsu + opening 的毛发候选检测，并在 ROI 内生成毛发 mask。已修复 Streamlit 热更新后旧 `AnalysisResult` 对象缺少 `effective_px` 字段导致的指标渲染报错，界面会用 `roi_px - hair_px` 兜底计算有效区。已修复自动毛发检测结果在 UI 中不明显的问题：分析结果现在记录 `hair_source`，指标显示“毛发标注（自动/手动）”，预览图使用分析后的 `analysis.hair`，上传文件变化时会清空旧分析结果。为避免 Streamlit 热更新导致后端自动兜底未反映到界面，app 层点击分析前会显式准备最终毛发 mask：手动红色 mask 非空则用手动，否则立刻执行自动毛发检测并传入分析函数。已修复刷新页面时顶层导入 `auto_hair_mask` 失败的问题：`app.py` 不再从 `core` 顶层直接导入该函数，而是通过 `colorroi_core` 模块动态获取；若旧 Streamlit 进程缓存模块缺少函数，会 reload 本地 core 模块再调用。已修复旧 Streamlit 进程缓存 `analyze_image()` 旧签名导致 `hair_source_hint` 参数报错的问题：app 层改为动态调用分析模块，必要时 reload `analysis.py`，极端旧签名下退回旧调用并补来源字段。结果指标区已拆成两行显示：第一行展示 ROI 面积、毛发标注和有效区，第二行单独展示黑、棕、灰、蓝灰和 DMDI，避免右侧面板中“灰/蓝灰/DMDI”被截断。已生成 `pics/` 8 张样张的自动毛发标注批量复核报告，输出到 `reports/pics_hair_review/index.html` 和 `reports/pics_hair_review/results.csv`。
 
 ## Recent Changes
 
@@ -59,10 +59,12 @@
 - 移除 `app.py` 对 `auto_hair_mask` 的顶层直接导入，改为动态获取并在缺失时 reload `colorroi_analyzer.core`，修复旧 Streamlit 模块缓存导致刷新页面 ImportError；当前 `import app`、pytest 6 项和自动毛发模拟均通过。
 - 将 `analyze_image()` 顶层直接导入改为动态模块调用，遇到旧签名 `hair_source_hint` 报错时 reload `analysis.py` 后重试，仍不支持时退回旧调用并补来源字段；当前 app 层模拟输出 `auto 516 auto 516`，pytest 6 项通过。
 - 优化 Streamlit 分析结果指标布局，将基础像素指标和颜色/DMDI 指标拆成两行，修复右侧“灰、蓝灰、DMDI”显示被截断的问题。
+- 新增 `scripts/batch_review_pics.py`，批量分析 `pics/` 样张并生成 HTML 复核报告、CSV 汇总、原图/毛发叠加/DMDI 热图预览；当前 8 张样张已全部生成报告。
 
 ## Next TODO
 
 - 在浏览器中重新执行一次完整人工流程：上传真实样例、手绘 ROI、不标红色毛发时验证自动毛发检测、再标红色毛发时验证人工 mask 优先、保存记录和导出 CSV。
+- 打开 `reports/pics_hair_review/index.html` 人工查看每张样张红色毛发候选是否漏检或误检，并据此决定是否继续调自动毛发阈值。
 - 根据人工流程结果继续修正 Streamlit 画布擦除/清空交互。
 
 ## Open Issues
