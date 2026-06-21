@@ -12,7 +12,7 @@ dependencies = [
   "scikit-image>=0.23",
   "scikit-learn>=1.5",
   "scipy>=1.13",
-  "streamlit>=1.35",
+  "streamlit>=1.35,<1.40",
   "streamlit-drawable-canvas>=0.9.3",
 ]
 

@@ -29,7 +29,7 @@
 
 ## Current Status
 
-已完成 Python 核心计算层迁移和 Streamlit 应用入口实现，创建本地 `.venv` 并安装项目依赖。`scripts/smoke_test.py` 已跑通，8 张 `pics/` 示例图片均可读取，pytest 核心测试通过。已启动 `.venv\Scripts\python.exe -m streamlit run app.py --server.address 127.0.0.1 --server.port 8501`，并确认 `http://127.0.0.1:8501` 返回 200。
+已完成 Python 核心计算层迁移和 Streamlit 应用入口实现，创建本地 `.venv` 并安装项目依赖。`scripts/smoke_test.py` 已跑通，8 张 `pics/` 示例图片均可读取，pytest 核心测试通过。已启动 `.venv\Scripts\python.exe -m streamlit run app.py --server.address 127.0.0.1 --server.port 8501`，并确认 `http://127.0.0.1:8501` 返回 200。上传图片时报错 `AttributeError: module 'streamlit.elements.image' has no attribute 'image_to_url'` 的问题已通过 Streamlit 兼容 shim 修复，同时将依赖约束收紧为 `streamlit>=1.35,<1.40`，避免新环境自动安装到不兼容版本。
 
 ## Recent Changes
 
@@ -44,6 +44,8 @@
 - 新增 `app.py`，实现 Streamlit 上传、手绘标注、分析、预览、记录保存和 CSV 导出界面。
 - 更新 `README.md`，补充应用启动命令和使用说明。
 - 启动 Streamlit 本地服务并通过 HTTP 访问验证页面可达。
+- 修复上传图片后 `streamlit-drawable-canvas` 与新版 Streamlit 内部 API 不兼容导致的 `image_to_url` 报错。
+- 在 `pyproject.toml` 和 `requirements.txt` 中收紧 Streamlit 版本范围，并在 `app.py` 导入画布组件前补齐兼容 API。
 
 ## Next TODO
 
@@ -55,6 +57,7 @@
 - 当前 Windows 终端可能以非 UTF-8 编码显示中文脚本输出，计算结果不受影响。
 - Python 版核心算法已通过冒烟测试，但尚未完成与 R 版同一手绘 ROI 的逐项端到端对照。
 - Streamlit 画布的擦除/清空交互与原 Shiny 自定义 canvas 不完全一致，仍需浏览器端手工复核。
+- 当前 `.venv` 因已有 Streamlit 服务占用二进制文件，未完成依赖降级；但应用内兼容 shim 已验证可在 Streamlit 1.58 中补齐缺失 API。若重建全新 `.venv`，依赖约束会安装兼容范围内的 Streamlit。
 
 ## Architecture Decisions
 

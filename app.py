@@ -17,6 +17,29 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 from PIL import Image
+
+
+def _patch_streamlit_canvas_image_api() -> None:
+    """为 streamlit-drawable-canvas 补齐新版 Streamlit 中移动过的图片 API。
+
+    `streamlit-drawable-canvas==0.9.3` 仍会从 `streamlit.elements.image`
+    调用内部函数 `image_to_url`。Streamlit 1.58 已把该函数移动到
+    `streamlit.elements.lib.image_utils`，导致上传图片后画布背景生成时报
+    `AttributeError`。这里在导入 `st_canvas` 之前把新版函数挂回旧模块路径，
+    只影响当前进程的兼容性，不修改第三方包源码。
+    """
+
+    try:
+        import streamlit.elements.image as legacy_image
+        from streamlit.elements.lib.image_utils import image_to_url
+    except Exception:
+        return
+
+    if not hasattr(legacy_image, "image_to_url"):
+        legacy_image.image_to_url = image_to_url
+
+
+_patch_streamlit_canvas_image_api()
 from streamlit_drawable_canvas import st_canvas
 
 PROJECT_ROOT = Path(__file__).resolve().parent
