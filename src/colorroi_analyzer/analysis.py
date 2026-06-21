@@ -31,6 +31,7 @@ class AnalysisResult:
     hair_px: int
     effective_px: int
     roi_percent: float
+    hair_source: str
 
 
 def analyze_image(
@@ -62,8 +63,10 @@ def analyze_image(
     hair = np.zeros((h, w), dtype=bool) if hair_mask is None else np.asarray(hair_mask).astype(bool)
     if hair.shape != (h, w):
         raise ValueError("毛发 mask 尺寸必须与图片尺寸一致。")
+    hair_source = "manual"
     if not hair.any():
         hair = auto_hair_mask(image) & roi
+        hair_source = "auto"
 
     clean = inpaint_masked_pixels(image, hair, roi) if repair_hair else image.copy()
     effective_mask = roi & (~hair)
@@ -89,4 +92,5 @@ def analyze_image(
         hair_px=int(hair.sum()),
         effective_px=int(effective_mask.sum()),
         roi_percent=round(roi_px / (h * w) * 100, 4),
+        hair_source=hair_source,
     )

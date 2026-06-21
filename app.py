@@ -91,6 +91,7 @@ def main() -> None:
         _render_records()
         return
 
+    _reset_analysis_when_upload_changes(uploaded)
     img = _read_uploaded_image(uploaded)
     display_img, scale = _make_display_image(img)
     stroke_color, drawing_mode = _canvas_style(draw_mode)
@@ -139,6 +140,16 @@ def _init_state() -> None:
 
     st.session_state.setdefault("analysis", None)
     st.session_state.setdefault("records", [])
+    st.session_state.setdefault("uploaded_signature", None)
+
+
+def _reset_analysis_when_upload_changes(uploaded) -> None:
+    """上传文件变化时清理旧分析结果，避免旧 session 对象继续渲染。"""
+
+    signature = (uploaded.name, uploaded.size)
+    if st.session_state.uploaded_signature != signature:
+        st.session_state.uploaded_signature = signature
+        st.session_state.analysis = None
 
 
 def _read_uploaded_image(uploaded) -> np.ndarray:
@@ -388,9 +399,10 @@ def _render_previews(img: np.ndarray, roi_boundary: np.ndarray, hair_mask: np.nd
     """渲染原图、ROI、修复图和热图预览。"""
 
     analysis = st.session_state.analysis
+    display_hair = analysis.hair if analysis is not None else hair_mask
     cols = st.columns(4)
     cols[0].image(to_uint8_image(img), caption="原始图", use_container_width=True)
-    cols[1].image(_make_overlay_preview(img, roi_boundary, hair_mask), caption="ROI / 毛发标注", use_container_width=True)
+    cols[1].image(_make_overlay_preview(img, roi_boundary, display_hair), caption="ROI / 毛发标注", use_container_width=True)
     if analysis is not None:
         cols[2].image(to_uint8_image(analysis.clean_image), caption="毛发修复后", use_container_width=True)
         cols[3].image(to_uint8_image(analysis.heatmap), caption="DMDI 热图", use_container_width=True)
@@ -420,9 +432,10 @@ def _render_metrics() -> None:
 
     ratios = analysis.clusters.ratios
     effective_px = _effective_px(analysis)
+    hair_source = _hair_source_label(analysis)
     metric_cols = st.columns(6)
     metric_cols[0].metric("ROI 面积", f"{analysis.roi_px} px")
-    metric_cols[1].metric("毛发标注", f"{analysis.hair_px} px")
+    metric_cols[1].metric(f"毛发标注（{hair_source}）", f"{analysis.hair_px} px")
     metric_cols[2].metric("有效区", f"{effective_px} px")
     metric_cols[3].metric("黑", f"{ratios['black'] * 100:.2f}%")
     metric_cols[4].metric("棕", f"{ratios['brown'] * 100:.2f}%")
@@ -478,6 +491,7 @@ def _save_record(
             "roi_px": analysis.roi_px,
             "roi_percent": round(analysis.roi_px / (h * w) * 100, 4),
             "hair_px": analysis.hair_px,
+            "hair_source": _hair_source_label(analysis),
             "effective_px": effective_px,
             "black_percent": round(ratios["black"] * 100, 4),
             "brown_percent": round(ratios["brown"] * 100, 4),
@@ -500,6 +514,17 @@ def _effective_px(analysis) -> int:
     if hasattr(analysis, "effective_px"):
         return int(analysis.effective_px)
     return max(0, int(getattr(analysis, "roi_px", 0)) - int(getattr(analysis, "hair_px", 0)))
+
+
+def _hair_source_label(analysis) -> str:
+    """返回毛发 mask 来源，用于区分 TXT 需求中的手动标注和自动检测。"""
+
+    source = str(getattr(analysis, "hair_source", "") or "")
+    if source == "auto":
+        return "自动"
+    if source == "manual":
+        return "手动"
+    return "未知"
 
 
 def _render_records() -> None:

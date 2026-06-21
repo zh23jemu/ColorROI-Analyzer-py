@@ -29,7 +29,7 @@
 
 ## Current Status
 
-已完成 Python 核心计算层迁移和 Streamlit 应用入口实现，创建本地 `.venv` 并安装项目依赖。`scripts/smoke_test.py` 已跑通，8 张 `pics/` 示例图片均可读取，pytest 核心测试通过。已启动 `.venv\Scripts\python.exe -m streamlit run app.py --server.address 127.0.0.1 --server.port 8501`，并确认 `http://127.0.0.1:8501` 返回 200。上传图片时报错 `AttributeError: module 'streamlit.elements.image' has no attribute 'image_to_url'` 以及后续 `AttributeError: 'int' object has no attribute 'width'` 的问题已通过 Streamlit 兼容 shim 修复：shim 会提供 `streamlit-drawable-canvas` 旧签名所需的 `image_to_url(image, width, ...)` 包装器，并把整数宽度转换为新版 Streamlit 需要的 `LayoutConfig`。依赖约束也已收紧为 `streamlit>=1.35,<1.40`，避免新环境自动安装到不兼容版本。已修复用户画出闭合黄色 ROI 但程序提示“ROI 内有效像素过少”的问题：应用现在优先从 `canvas_result.json_data` 的 Fabric 手绘路径对象重建 ROI/毛发 mask，不再优先从背景图和标注合成后的截图按颜色猜测。已按 TXT 原始需求补齐自动毛发检测：当用户没有红色手动标注时，分析流程会自动执行 black-hat + Otsu + opening 的毛发候选检测，并在 ROI 内生成毛发 mask。已修复 Streamlit 热更新后旧 `AnalysisResult` 对象缺少 `effective_px` 字段导致的指标渲染报错，界面会用 `roi_px - hair_px` 兜底计算有效区。
+已完成 Python 核心计算层迁移和 Streamlit 应用入口实现，创建本地 `.venv` 并安装项目依赖。`scripts/smoke_test.py` 已跑通，8 张 `pics/` 示例图片均可读取，pytest 核心测试通过。已启动 `.venv\Scripts\python.exe -m streamlit run app.py --server.address 127.0.0.1 --server.port 8501`，并确认 `http://127.0.0.1:8501` 返回 200。上传图片时报错 `AttributeError: module 'streamlit.elements.image' has no attribute 'image_to_url'` 以及后续 `AttributeError: 'int' object has no attribute 'width'` 的问题已通过 Streamlit 兼容 shim 修复：shim 会提供 `streamlit-drawable-canvas` 旧签名所需的 `image_to_url(image, width, ...)` 包装器，并把整数宽度转换为新版 Streamlit 需要的 `LayoutConfig`。依赖约束也已收紧为 `streamlit>=1.35,<1.40`，避免新环境自动安装到不兼容版本。已修复用户画出闭合黄色 ROI 但程序提示“ROI 内有效像素过少”的问题：应用现在优先从 `canvas_result.json_data` 的 Fabric 手绘路径对象重建 ROI/毛发 mask，不再优先从背景图和标注合成后的截图按颜色猜测。已按 TXT 原始需求补齐自动毛发检测：当用户没有红色手动标注时，分析流程会自动执行 black-hat + Otsu + opening 的毛发候选检测，并在 ROI 内生成毛发 mask。已修复 Streamlit 热更新后旧 `AnalysisResult` 对象缺少 `effective_px` 字段导致的指标渲染报错，界面会用 `roi_px - hair_px` 兜底计算有效区。已修复自动毛发检测结果在 UI 中不明显的问题：分析结果现在记录 `hair_source`，指标显示“毛发标注（自动/手动）”，预览图使用分析后的 `analysis.hair`，上传文件变化时会清空旧分析结果。
 
 ## Recent Changes
 
@@ -54,6 +54,7 @@
 - Streamlit 指标和导出记录新增 `effective_px`，用于显示/保存 ROI 有效分析像素数。
 - 新增自动毛发检测和空手动 mask 分析测试；当前 pytest 5 项通过，核心冒烟测试通过。
 - 修复 Streamlit session 中旧版 `AnalysisResult` 对象缺少 `effective_px` 时的 UI 渲染报错，新增 `_effective_px()` 兜底函数；当前 pytest 5 项通过。
+- 分析结果新增 `hair_source`，UI 指标显示毛发 mask 来源；预览图改为显示分析后的自动/手动毛发 mask，并在上传文件变化时清理旧分析状态。命令行模拟 ROI 验证自动毛发来源为 `auto` 且检测到 516 px，pytest 5 项通过。
 
 ## Next TODO
 
