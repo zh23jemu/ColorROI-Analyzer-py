@@ -422,10 +422,10 @@ def _render_metrics() -> None:
     metric_cols = st.columns(6)
     metric_cols[0].metric("ROI 面积", f"{analysis.roi_px} px")
     metric_cols[1].metric("毛发标注", f"{analysis.hair_px} px")
-    metric_cols[2].metric("黑", f"{ratios['black'] * 100:.2f}%")
-    metric_cols[3].metric("棕", f"{ratios['brown'] * 100:.2f}%")
-    metric_cols[4].metric("灰", f"{ratios['gray'] * 100:.2f}%")
-    metric_cols[5].metric("蓝 / DMDI", f"{ratios['blue'] * 100:.2f}% / {analysis.clusters.dmdi:.4f}")
+    metric_cols[2].metric("有效区", f"{analysis.effective_px} px")
+    metric_cols[3].metric("黑", f"{ratios['black'] * 100:.2f}%")
+    metric_cols[4].metric("棕", f"{ratios['brown'] * 100:.2f}%")
+    metric_cols[5].metric("灰 / 蓝灰 / DMDI", f"{ratios['gray'] * 100:.2f}% / {ratios['blue'] * 100:.2f}% / {analysis.clusters.dmdi:.4f}")
 
 
 def _render_lab_scatter() -> None:
@@ -476,6 +476,7 @@ def _save_record(
             "roi_px": analysis.roi_px,
             "roi_percent": round(analysis.roi_px / (h * w) * 100, 4),
             "hair_px": analysis.hair_px,
+            "effective_px": analysis.effective_px,
             "black_percent": round(ratios["black"] * 100, 4),
             "brown_percent": round(ratios["brown"] * 100, 4),
             "gray_percent": round(ratios["gray"] * 100, 4),

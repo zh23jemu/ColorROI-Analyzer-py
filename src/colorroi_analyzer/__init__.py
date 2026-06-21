@@ -2,6 +2,7 @@
 
 from .analysis import AnalysisResult, analyze_image
 from .core import (
+    auto_hair_mask,
     cluster_lab_colors,
     fill_roi_from_boundary,
     inpaint_masked_pixels,
@@ -13,6 +14,7 @@ from .core import (
 __all__ = [
     "AnalysisResult",
     "analyze_image",
+    "auto_hair_mask",
     "cluster_lab_colors",
     "fill_roi_from_boundary",
     "inpaint_masked_pixels",

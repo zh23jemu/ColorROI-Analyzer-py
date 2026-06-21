@@ -8,6 +8,7 @@ import numpy as np
 
 from .core import (
     ClusterResult,
+    auto_hair_mask,
     cluster_lab_colors,
     fill_roi_from_boundary,
     inpaint_masked_pixels,
@@ -28,6 +29,7 @@ class AnalysisResult:
     clusters: ClusterResult
     roi_px: int
     hair_px: int
+    effective_px: int
     roi_percent: float
 
 
@@ -42,7 +44,7 @@ def analyze_image(
     参数:
         img: 0-1 RGB 图片数组。
         roi_boundary: 黄色手绘边界 mask，函数内部会填充为实心 ROI。
-        hair_mask: 红色毛发或遮挡 mask；为空时按全 False 处理。
+        hair_mask: 红色毛发或遮挡 mask；为空或没有任何像素时自动检测毛发。
         repair_hair: 是否在分析前对红色 mask 做局部修复。
 
     返回:
@@ -60,9 +62,12 @@ def analyze_image(
     hair = np.zeros((h, w), dtype=bool) if hair_mask is None else np.asarray(hair_mask).astype(bool)
     if hair.shape != (h, w):
         raise ValueError("毛发 mask 尺寸必须与图片尺寸一致。")
+    if not hair.any():
+        hair = auto_hair_mask(image) & roi
 
     clean = inpaint_masked_pixels(image, hair, roi) if repair_hair else image.copy()
-    roi_pixels = clean[roi]
+    effective_mask = roi & (~hair)
+    roi_pixels = clean[effective_mask]
     if roi_pixels.shape[0] < 50:
         raise ValueError("ROI 内有效像素过少，无法稳定分析。")
 
@@ -82,5 +87,6 @@ def analyze_image(
         clusters=clusters,
         roi_px=roi_px,
         hair_px=int(hair.sum()),
+        effective_px=int(effective_mask.sum()),
         roi_percent=round(roi_px / (h * w) * 100, 4),
     )

@@ -14,6 +14,7 @@ import numpy as np
 from PIL import Image
 from scipy import ndimage
 from skimage import color
+from skimage.filters import threshold_otsu
 from sklearn.cluster import KMeans
 
 
@@ -199,6 +200,41 @@ def inpaint_masked_pixels(
         out[:, :, ch] = np.clip(channel, 0.0, 1.0)
 
     return out
+
+
+def auto_hair_mask(img: np.ndarray) -> np.ndarray:
+    """自动检测图片中的深色细长毛发候选区域。
+
+    该函数按 TXT 需求中的 R 原型 `auto_hair()` 迁移：
+    1. RGB 转灰度；
+    2. 使用较大的圆盘结构元素做 closing，估计局部背景；
+    3. 用 closing 后背景减原灰度图得到 black-hat 响应，突出暗细线；
+    4. 归一化后用 Otsu 阈值二值化；
+    5. 用小圆盘 opening 去掉孤立噪点。
+
+    输出是布尔 mask。它是保守的候选检测，不替代人工复核；如果用户已经红色
+    标注毛发，分析流程会优先使用人工 mask。
+    """
+
+    img_arr = np.asarray(img, dtype=np.float32)
+    if img_arr.ndim != 3 or img_arr.shape[2] < 3:
+        raise ValueError("自动毛发检测需要 RGB 图片数组。")
+
+    gray = color.rgb2gray(np.clip(img_arr[:, :, :3], 0.0, 1.0))
+    closed = ndimage.grey_closing(gray, footprint=_disc_structure(15))
+    black_hat = closed - gray
+    response_min = float(np.min(black_hat))
+    response_max = float(np.max(black_hat))
+    response = (black_hat - response_min) / (response_max - response_min + 1e-10)
+
+    try:
+        threshold = threshold_otsu(response)
+    except ValueError:
+        return np.zeros(gray.shape, dtype=bool)
+
+    hair = response > threshold
+    hair = ndimage.binary_opening(hair, structure=_disc_structure(3))
+    return hair.astype(bool)
 
 
 def rgb_to_lab(rgb: np.ndarray) -> np.ndarray:
