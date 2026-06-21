@@ -23,20 +23,27 @@ def _patch_streamlit_canvas_image_api() -> None:
     """为 streamlit-drawable-canvas 补齐新版 Streamlit 中移动过的图片 API。
 
     `streamlit-drawable-canvas==0.9.3` 仍会从 `streamlit.elements.image`
-    调用内部函数 `image_to_url`。Streamlit 1.58 已把该函数移动到
-    `streamlit.elements.lib.image_utils`，导致上传图片后画布背景生成时报
-    `AttributeError`。这里在导入 `st_canvas` 之前把新版函数挂回旧模块路径，
-    只影响当前进程的兼容性，不修改第三方包源码。
+    调用旧签名的内部函数 `image_to_url(image, width, clamp, channels,
+    output_format, image_id)`。Streamlit 1.58 已把该函数移动到
+    `streamlit.elements.lib.image_utils`，并把第二个参数改为 `LayoutConfig`。
+    这里在导入 `st_canvas` 之前提供一个兼容旧签名的包装器，只影响当前进程，
+    不修改第三方包源码。
     """
 
     try:
         import streamlit.elements.image as legacy_image
-        from streamlit.elements.lib.image_utils import image_to_url
+        from streamlit.elements.lib.image_utils import image_to_url as modern_image_to_url
+        from streamlit.elements.lib.layout_utils import LayoutConfig
     except Exception:
         return
 
-    if not hasattr(legacy_image, "image_to_url"):
-        legacy_image.image_to_url = image_to_url
+    def legacy_image_to_url(image, width, clamp, channels, output_format, image_id):
+        # 旧画布组件传入的是整数宽度；新版 Streamlit 需要带 width 属性的
+        # LayoutConfig。其它参数保持原样透传，避免改变图片编码和缓存 ID。
+        layout_config = width if isinstance(width, LayoutConfig) else LayoutConfig(width=width)
+        return modern_image_to_url(image, layout_config, clamp, channels, output_format, image_id)
+
+    legacy_image.image_to_url = legacy_image_to_url
 
 
 _patch_streamlit_canvas_image_api()
