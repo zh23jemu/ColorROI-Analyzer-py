@@ -523,13 +523,19 @@ def _render_metrics() -> None:
     ratios = analysis.clusters.ratios
     effective_px = _effective_px(analysis)
     hair_source = _hair_source_label(analysis)
-    metric_cols = st.columns(6)
-    metric_cols[0].metric("ROI 面积", f"{analysis.roi_px} px")
-    metric_cols[1].metric(f"毛发标注（{hair_source}）", f"{analysis.hair_px} px")
-    metric_cols[2].metric("有效区", f"{effective_px} px")
-    metric_cols[3].metric("黑", f"{ratios['black'] * 100:.2f}%")
-    metric_cols[4].metric("棕", f"{ratios['brown'] * 100:.2f}%")
-    metric_cols[5].metric("灰 / 蓝灰 / DMDI", f"{ratios['gray'] * 100:.2f}% / {ratios['blue'] * 100:.2f}% / {analysis.clusters.dmdi:.4f}")
+    # Streamlit 的 metric 卡片在右侧结果栏中宽度较窄；把基础像素指标和颜色指标拆成两行，
+    # 避免“灰/蓝灰/DMDI”挤在同一格里被浏览器截断成省略号。
+    pixel_cols = st.columns(3)
+    pixel_cols[0].metric("ROI 面积", f"{analysis.roi_px} px")
+    pixel_cols[1].metric(f"毛发标注（{hair_source}）", f"{analysis.hair_px} px")
+    pixel_cols[2].metric("有效区", f"{effective_px} px")
+
+    color_cols = st.columns(5)
+    color_cols[0].metric("黑", f"{ratios['black'] * 100:.2f}%")
+    color_cols[1].metric("棕", f"{ratios['brown'] * 100:.2f}%")
+    color_cols[2].metric("灰", f"{ratios['gray'] * 100:.2f}%")
+    color_cols[3].metric("蓝灰", f"{ratios['blue'] * 100:.2f}%")
+    color_cols[4].metric("DMDI", f"{analysis.clusters.dmdi:.4f}")
 
 
 def _render_lab_scatter() -> None:
