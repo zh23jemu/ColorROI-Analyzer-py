@@ -12,7 +12,7 @@
 
 ## 当前架构
 
-当前已建立 `src/colorroi_analyzer/` 核心算法包，并将 R 版的图片读取、ROI 边界填充、毛发局部修复、RGB 到 Lab、KMeans 四分类、DMDI 计算和热图生成迁移到 Python。`scripts/` 中已提供冒烟测试、图片目录检查和人工复核表生成脚本，`tests/` 中已提供核心算法 pytest 测试。Streamlit 交互界面仍待实现。
+当前已建立 `src/colorroi_analyzer/` 核心算法包，并将 R 版的图片读取、ROI 边界填充、毛发局部修复、RGB 到 Lab、KMeans 四分类、DMDI 计算和热图生成迁移到 Python。`app.py` 是 Streamlit 交互界面入口，支持上传图片、画 ROI/毛发、分析、预览、保存记录和 CSV 导出。`scripts/` 中已提供冒烟测试、图片目录检查和人工复核表生成脚本，`tests/` 中已提供核心算法 pytest 测试。
 
 ## 开发规范
 
@@ -24,13 +24,12 @@
 
 ## TODO
 
-- 建立 Streamlit 交互界面。
 - 对比 R 版端到端样例结果，继续校准 Python 版默认 ROI 和颜色标签输出。
-- 完善 README 中的应用启动说明。
+- 进行浏览器端人工手绘流程复核，确认 Streamlit 画布标注提取与预览结果一致。
 
 ## Current Status
 
-已完成 Python 核心计算层迁移，创建本地 `.venv` 并安装项目依赖。`scripts/smoke_test.py` 已跑通，8 张 `pics/` 示例图片均可读取，pytest 核心测试通过。
+已完成 Python 核心计算层迁移和 Streamlit 应用入口实现，创建本地 `.venv` 并安装项目依赖。`scripts/smoke_test.py` 已跑通，8 张 `pics/` 示例图片均可读取，pytest 核心测试通过。已启动 `.venv\Scripts\python.exe -m streamlit run app.py --server.address 127.0.0.1 --server.port 8501`，并确认 `http://127.0.0.1:8501` 返回 200。
 
 ## Recent Changes
 
@@ -42,17 +41,20 @@
 - 新增 `scripts/smoke_test.py`、`scripts/inspect_images.py` 和 `scripts/create_review_sheet.py`。
 - 新增 `tests/test_core.py`，覆盖 ROI 填充和样例图核心分析冒烟流程。
 - 使用 `.venv\Scripts\python.exe scripts\smoke_test.py`、`.venv\Scripts\python.exe scripts\inspect_images.py` 和 `.venv\Scripts\python.exe -m pytest` 完成验证。
+- 新增 `app.py`，实现 Streamlit 上传、手绘标注、分析、预览、记录保存和 CSV 导出界面。
+- 更新 `README.md`，补充应用启动命令和使用说明。
+- 启动 Streamlit 本地服务并通过 HTTP 访问验证页面可达。
 
 ## Next TODO
 
-- 实现 Streamlit 交互应用入口，支持上传图片、画 ROI/毛发、分析、保存记录和导出 CSV。
-- 将 Python 版界面跑起来并做浏览器端人工流程复核。
+- 在浏览器中执行一次完整人工流程：上传真实样例、手绘 ROI、红色标注毛发、分析、保存记录和导出 CSV。
+- 根据人工流程结果修正 Streamlit 画布擦除/清空交互。
 
 ## Open Issues
 
-- 尚未实现 Python 应用入口。
 - 当前 Windows 终端可能以非 UTF-8 编码显示中文脚本输出，计算结果不受影响。
 - Python 版核心算法已通过冒烟测试，但尚未完成与 R 版同一手绘 ROI 的逐项端到端对照。
+- Streamlit 画布的擦除/清空交互与原 Shiny 自定义 canvas 不完全一致，仍需浏览器端手工复核。
 
 ## Architecture Decisions
 

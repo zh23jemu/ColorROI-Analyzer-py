@@ -1,0 +1,301 @@
+"""ColorROI Analyzer Python 交互式应用入口。
+
+该界面使用 Streamlit 复刻原 R Shiny 应用的核心工作流：上传图片、手动画出
+黄色 ROI 边界、红色标注毛发或遮挡、可选局部修复后分析颜色比例和 DMDI，
+并支持保存多条记录与导出 CSV。
+"""
+
+from __future__ import annotations
+
+import io
+import sys
+from datetime import datetime
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+import plotly.express as px
+import streamlit as st
+from PIL import Image
+from streamlit_drawable_canvas import st_canvas
+
+PROJECT_ROOT = Path(__file__).resolve().parent
+SRC_DIR = PROJECT_ROOT / "src"
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
+
+from colorroi_analyzer.analysis import analyze_image
+from colorroi_analyzer.core import overlay_masks_from_rgba, to_uint8_image
+
+
+MAX_DISPLAY_WIDTH = 860
+
+
+def main() -> None:
+    """渲染 Streamlit 应用。"""
+
+    st.set_page_config(page_title="ColorROI Analyzer Python", layout="wide")
+    _init_state()
+
+    st.title("ColorROI Analyzer")
+
+    with st.sidebar:
+        uploaded = st.file_uploader("上传图片", type=["jpg", "jpeg", "png", "bmp", "tif", "tiff"])
+        draw_mode = st.radio("绘制模式", ["ROI 边界（黄色）", "毛发标注（红色）", "橡皮擦"], index=0)
+        brush_size = st.slider("画笔粗细", min_value=3, max_value=36, value=10, step=1)
+        repair_hair = st.checkbox("分析前修复红色毛发区域", value=True)
+        run_analysis = st.button("开始分析", type="primary", use_container_width=True)
+
+        st.divider()
+        st.subheader("样本信息")
+        sample_name = st.text_input("姓名/样本名")
+        sample_id = st.text_input("编号")
+        gender = st.radio("性别", ["男", "女", "未知"], index=2, horizontal=True)
+        hair_clinical = st.radio("临床是否可见毛发", ["有", "无", "未知"], index=2, horizontal=True)
+        pattern = st.selectbox("结构模式", ["未填写", "Globular", "Homogeneous", "Reticular", "Multicomponent"])
+        save_record = st.button("保存记录", use_container_width=True)
+
+    if uploaded is None:
+        st.info("请先上传一张图片。")
+        _render_records()
+        return
+
+    img = _read_uploaded_image(uploaded)
+    display_img, scale = _make_display_image(img)
+    stroke_color, drawing_mode = _canvas_style(draw_mode)
+
+    canvas_result = st_canvas(
+        fill_color="rgba(0, 0, 0, 0)",
+        stroke_width=brush_size,
+        stroke_color=stroke_color,
+        background_image=display_img,
+        update_streamlit=True,
+        height=display_img.height,
+        width=display_img.width,
+        drawing_mode=drawing_mode,
+        key=f"canvas_{uploaded.name}_{display_img.width}_{display_img.height}",
+    )
+
+    roi_boundary, hair_mask = _extract_masks(canvas_result.image_data, img.shape[:2], scale)
+    if run_analysis:
+        _run_analysis(img, roi_boundary, hair_mask, repair_hair)
+
+    _render_previews(img, roi_boundary, hair_mask)
+    _render_metrics()
+    _render_lab_scatter()
+
+    if save_record:
+        _save_record(
+            img_shape=img.shape,
+            sample_name=sample_name,
+            sample_id=sample_id,
+            gender=gender,
+            hair_clinical=hair_clinical,
+            pattern=pattern,
+        )
+
+    _render_records()
+
+
+def _init_state() -> None:
+    """初始化跨 rerun 保存的状态。"""
+
+    st.session_state.setdefault("analysis", None)
+    st.session_state.setdefault("records", [])
+
+
+def _read_uploaded_image(uploaded) -> np.ndarray:
+    """读取上传图片并转换为 0-1 RGB 数组。"""
+
+    image = Image.open(uploaded).convert("RGB")
+    arr = np.asarray(image, dtype=np.float32) / 255.0
+    return np.clip(arr, 0.0, 1.0)
+
+
+def _make_display_image(img: np.ndarray) -> tuple[Image.Image, float]:
+    """根据最大显示宽度生成画布背景图。"""
+
+    h, w = img.shape[:2]
+    scale = min(1.0, MAX_DISPLAY_WIDTH / w)
+    display_w = int(round(w * scale))
+    display_h = int(round(h * scale))
+    pil_img = to_uint8_image(img)
+    if scale < 1:
+        pil_img = pil_img.resize((display_w, display_h), Image.Resampling.LANCZOS)
+    return pil_img, scale
+
+
+def _canvas_style(draw_mode: str) -> tuple[str, str]:
+    """把中文绘制模式转换为 canvas 画笔颜色和模式。"""
+
+    if draw_mode == "毛发标注（红色）":
+        return "rgba(230,45,24,1)", "freedraw"
+    if draw_mode == "橡皮擦":
+        return "rgba(0,0,0,1)", "transform"
+    return "rgba(255,220,0,1)", "freedraw"
+
+
+def _extract_masks(image_data: np.ndarray | None, target_shape: tuple[int, int], scale: float) -> tuple[np.ndarray, np.ndarray]:
+    """从 Streamlit 画布图层中提取 ROI 边界和毛发 mask。
+
+    streamlit-drawable-canvas 返回的是包含背景图的 RGBA 截图，因此需要先根据
+    标注颜色的优势通道规则提取黄色/红色，再按显示缩放比例映射回原图尺寸。
+    """
+
+    h, w = target_shape
+    if image_data is None:
+        return np.zeros((h, w), dtype=bool), np.zeros((h, w), dtype=bool)
+
+    roi_small, hair_small = overlay_masks_from_rgba(image_data)
+    if scale == 1 and roi_small.shape == (h, w):
+        return roi_small, hair_small
+
+    # 用 Pillow 最近邻缩放 mask，保持边界像素的二值属性，不引入插值灰边。
+    roi_img = Image.fromarray((roi_small.astype(np.uint8) * 255), mode="L").resize((w, h), Image.Resampling.NEAREST)
+    hair_img = Image.fromarray((hair_small.astype(np.uint8) * 255), mode="L").resize((w, h), Image.Resampling.NEAREST)
+    return np.asarray(roi_img) > 0, np.asarray(hair_img) > 0
+
+
+def _run_analysis(img: np.ndarray, roi_boundary: np.ndarray, hair_mask: np.ndarray, repair_hair: bool) -> None:
+    """执行一次 ROI 分析，并把结果写入 session_state。"""
+
+    try:
+        st.session_state.analysis = analyze_image(img, roi_boundary, hair_mask, repair_hair=repair_hair)
+        st.success("分析完成。")
+    except Exception as exc:
+        st.session_state.analysis = None
+        st.warning(str(exc))
+
+
+def _render_previews(img: np.ndarray, roi_boundary: np.ndarray, hair_mask: np.ndarray) -> None:
+    """渲染原图、ROI、修复图和热图预览。"""
+
+    analysis = st.session_state.analysis
+    cols = st.columns(4)
+    cols[0].image(to_uint8_image(img), caption="原始图", use_container_width=True)
+    cols[1].image(_make_overlay_preview(img, roi_boundary, hair_mask), caption="ROI / 毛发标注", use_container_width=True)
+    if analysis is not None:
+        cols[2].image(to_uint8_image(analysis.clean_image), caption="毛发修复后", use_container_width=True)
+        cols[3].image(to_uint8_image(analysis.heatmap), caption="DMDI 热图", use_container_width=True)
+    else:
+        cols[2].empty()
+        cols[3].empty()
+
+
+def _make_overlay_preview(img: np.ndarray, roi_boundary: np.ndarray, hair_mask: np.ndarray) -> Image.Image:
+    """生成带黄色 ROI 和红色毛发标注的预览图。"""
+
+    preview = np.asarray(img).copy()
+    boundary = np.asarray(roi_boundary).astype(bool)
+    hair = np.asarray(hair_mask).astype(bool)
+    preview[boundary] = np.array([1.0, 0.86, 0.0], dtype=np.float32)
+    preview[hair] = np.array([0.90, 0.18, 0.12], dtype=np.float32)
+    return to_uint8_image(preview)
+
+
+def _render_metrics() -> None:
+    """渲染 ROI 面积、颜色比例和 DMDI。"""
+
+    analysis = st.session_state.analysis
+    if analysis is None:
+        st.caption("当前尚未生成分析结果。")
+        return
+
+    ratios = analysis.clusters.ratios
+    metric_cols = st.columns(6)
+    metric_cols[0].metric("ROI 面积", f"{analysis.roi_px} px")
+    metric_cols[1].metric("毛发标注", f"{analysis.hair_px} px")
+    metric_cols[2].metric("黑", f"{ratios['black'] * 100:.2f}%")
+    metric_cols[3].metric("棕", f"{ratios['brown'] * 100:.2f}%")
+    metric_cols[4].metric("灰", f"{ratios['gray'] * 100:.2f}%")
+    metric_cols[5].metric("蓝 / DMDI", f"{ratios['blue'] * 100:.2f}% / {analysis.clusters.dmdi:.4f}")
+
+
+def _render_lab_scatter() -> None:
+    """渲染 Lab 空间散点图。"""
+
+    analysis = st.session_state.analysis
+    if analysis is None:
+        return
+
+    lab = analysis.lab
+    if lab.shape[0] > 5000:
+        rng = np.random.default_rng(42)
+        lab = lab[rng.choice(lab.shape[0], size=5000, replace=False)]
+    df = pd.DataFrame(lab, columns=["L", "a", "b"])
+    fig = px.scatter(df, x="a", y="L", color="b", opacity=0.35, labels={"a": "a*", "L": "L*", "b": "b*"})
+    fig.update_layout(height=320, margin=dict(l=40, r=20, t=20, b=40))
+    st.plotly_chart(fig, use_container_width=True)
+
+
+def _save_record(
+    img_shape: tuple[int, ...],
+    sample_name: str,
+    sample_id: str,
+    gender: str,
+    hair_clinical: str,
+    pattern: str,
+) -> None:
+    """保存当前分析记录到 session_state。"""
+
+    analysis = st.session_state.analysis
+    if analysis is None:
+        st.warning("请先完成分析再保存记录。")
+        return
+    if not sample_name.strip() or not sample_id.strip():
+        st.warning("保存前请填写姓名/样本名和编号。")
+        return
+
+    ratios = analysis.clusters.ratios
+    h, w = img_shape[:2]
+    st.session_state.records.append(
+        {
+            "analysis_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "sample_name": sample_name.strip(),
+            "sample_id": sample_id.strip(),
+            "gender": gender,
+            "hair_clinical": hair_clinical,
+            "pattern": pattern,
+            "roi_px": analysis.roi_px,
+            "roi_percent": round(analysis.roi_px / (h * w) * 100, 4),
+            "hair_px": analysis.hair_px,
+            "black_percent": round(ratios["black"] * 100, 4),
+            "brown_percent": round(ratios["brown"] * 100, 4),
+            "gray_percent": round(ratios["gray"] * 100, 4),
+            "blue_percent": round(ratios["blue"] * 100, 4),
+            "dmdi": analysis.clusters.dmdi,
+        }
+    )
+    st.success("记录已保存。")
+
+
+def _render_records() -> None:
+    """渲染已保存记录和 CSV 下载按钮。"""
+
+    st.subheader("已保存记录")
+    records = st.session_state.records
+    if not records:
+        st.caption("暂无保存记录。")
+        return
+
+    df = pd.DataFrame(records)
+    st.dataframe(df, use_container_width=True, hide_index=True)
+    csv_bytes = _dataframe_to_csv_bytes(df)
+    st.download_button(
+        "导出 CSV",
+        data=csv_bytes,
+        file_name=f"colorroi_records_{datetime.now():%Y-%m-%d}.csv",
+        mime="text/csv",
+    )
+
+
+def _dataframe_to_csv_bytes(df: pd.DataFrame) -> bytes:
+    """以 UTF-8 BOM 导出 CSV，方便 Windows Excel 直接识别中文列值。"""
+
+    buffer = io.StringIO()
+    df.to_csv(buffer, index=False)
+    return ("\ufeff" + buffer.getvalue()).encode("utf-8")
+
+
+if __name__ == "__main__":
+    main()
