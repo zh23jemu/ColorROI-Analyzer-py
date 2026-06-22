@@ -265,24 +265,32 @@ def auto_lesion_mask(img: np.ndarray) -> np.ndarray:
     border = _border_mask(h, w, max(4, int(min(h, w) * 0.08)))
     background_lab = np.median(lab[border], axis=0)
     delta = np.linalg.norm(lab - background_lab, axis=2)
-    delta = ndimage.gaussian_filter(delta, sigma=2.0)
+    dark_delta = np.maximum(0.0, background_lab[0] - lab[:, :, 0])
+    # 单纯按颜色距离分割容易把光照渐变或大面积正常皮肤纳入 ROI；皮损通常还会
+    # 比周围肤色更暗，因此把 L* 变暗程度加入评分，并保持平滑以降低毛孔噪点影响。
+    lesion_score = delta + dark_delta * 0.6
+    lesion_score = ndimage.gaussian_filter(lesion_score, sigma=2.0)
 
-    delta_min = float(np.min(delta))
-    delta_max = float(np.max(delta))
-    if delta_max - delta_min < 1e-6:
+    score_min = float(np.min(lesion_score))
+    score_max = float(np.max(lesion_score))
+    if score_max - score_min < 1e-6:
         return np.zeros((h, w), dtype=bool)
-    normalized = (delta - delta_min) / (delta_max - delta_min)
+    normalized = (lesion_score - score_min) / (score_max - score_min)
 
     try:
-        threshold = threshold_otsu(normalized)
+        otsu_threshold = threshold_otsu(normalized)
     except ValueError:
         return np.zeros((h, w), dtype=bool)
 
-    # 阈值加一点保守余量，减少把正常皮肤纹理整片纳入 ROI 的概率。
-    candidate = normalized > min(0.95, threshold * 1.05)
+    non_border = normalized[~border]
+    percentile_threshold = float(np.percentile(non_border, 82)) if non_border.size else 1.0
+    # 自动 ROI 第一版偏大；这里改为更保守的阈值：同时要求超过 Otsu 放大值、
+    # 高分位阈值和最低强度门槛，宁可给出较小候选，再由用户手动画补充。
+    threshold = max(0.28, min(0.95, otsu_threshold * 1.35), percentile_threshold)
+    candidate = normalized > threshold
     candidate &= ~border
     candidate = ndimage.binary_opening(candidate, structure=_disc_structure(5))
-    candidate = ndimage.binary_closing(candidate, structure=_disc_structure(17))
+    candidate = ndimage.binary_closing(candidate, structure=_disc_structure(13))
     candidate = ndimage.binary_fill_holes(candidate)
 
     selected = _select_lesion_component(candidate)
@@ -495,15 +503,17 @@ def _select_lesion_component(candidate: np.ndarray) -> np.ndarray:
         component = labels == label
         area = int(component.sum())
         area_ratio = area / total
-        if area_ratio < 0.002 or area_ratio > 0.65:
+        if area_ratio < 0.002 or area_ratio > 0.38:
             continue
 
         ys, xs = np.nonzero(component)
         centroid_y = float(np.mean(ys))
         centroid_x = float(np.mean(xs))
         center_score = 1.0 - min(1.0, np.hypot(centroid_y - center_y, centroid_x - center_x) / max_distance)
-        # 面积采用平方根压缩，避免一味偏向过大的光照区域。
-        score = np.sqrt(area_ratio) * 0.65 + center_score * 0.35
+        compactness = area / (max(1, (ys.max() - ys.min() + 1) * (xs.max() - xs.min() + 1)))
+        # 面积只作为弱信号，避免大块阴影或背景皮肤压过真正皮损；更看重中心性和
+        # 紧凑度，因为样张通常把皮损置于画面中心附近。
+        score = np.sqrt(area_ratio) * 0.35 + center_score * 0.40 + compactness * 0.25
         if score > best_score:
             best_score = score
             best_label = label
