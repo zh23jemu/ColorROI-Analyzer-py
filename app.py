@@ -75,6 +75,7 @@ def main() -> None:
         uploaded = st.file_uploader("上传图片", type=["jpg", "jpeg", "png", "bmp", "tif", "tiff"])
         draw_mode = st.radio("绘制模式", ["ROI 边界（黄色）", "毛发标注（红色）", "橡皮擦"], index=0)
         brush_size = st.slider("画笔粗细", min_value=3, max_value=36, value=10, step=1)
+        use_auto_lesion = st.checkbox("未手动画 ROI 时自动识别皮损候选", value=True)
         repair_hair = st.checkbox("分析前修复红色毛发区域", value=True)
         run_analysis = st.button("开始分析", type="primary", use_container_width=True)
 
@@ -116,11 +117,12 @@ def main() -> None:
         display_shape=(display_img.height, display_img.width),
         scale=scale,
     )
+    roi_boundary, roi_source = _prepare_roi_boundary(img, roi_boundary, use_auto_lesion)
     if run_analysis:
         hair_mask, hair_source = _prepare_hair_mask_for_analysis(img, roi_boundary, hair_mask)
-        _run_analysis(img, roi_boundary, hair_mask, repair_hair, hair_source)
+        _run_analysis(img, roi_boundary, hair_mask, repair_hair, hair_source, roi_source)
 
-    _render_previews(img, roi_boundary, hair_mask)
+    _render_previews(img, roi_boundary, hair_mask, roi_source)
     _render_metrics()
     _render_lab_scatter()
 
@@ -143,6 +145,7 @@ def _init_state() -> None:
     st.session_state.setdefault("analysis", None)
     st.session_state.setdefault("records", [])
     st.session_state.setdefault("uploaded_signature", None)
+    st.session_state.setdefault("roi_source", "unknown")
 
 
 def _reset_analysis_when_upload_changes(uploaded) -> None:
@@ -152,6 +155,7 @@ def _reset_analysis_when_upload_changes(uploaded) -> None:
     if st.session_state.uploaded_signature != signature:
         st.session_state.uploaded_signature = signature
         st.session_state.analysis = None
+        st.session_state.roi_source = "unknown"
 
 
 def _read_uploaded_image(uploaded) -> np.ndarray:
@@ -392,11 +396,13 @@ def _run_analysis(
     hair_mask: np.ndarray,
     repair_hair: bool,
     hair_source: str | None = None,
+    roi_source: str | None = None,
 ) -> None:
     """执行一次 ROI 分析，并把结果写入 session_state。"""
 
     try:
         st.session_state.analysis = _analyze_image(img, roi_boundary, hair_mask, repair_hair, hair_source)
+        st.session_state.roi_source = roi_source or "unknown"
         st.success("分析完成。")
     except Exception as exc:
         st.session_state.analysis = None
@@ -448,6 +454,46 @@ def _analyze_image(
         return result
 
 
+def _prepare_roi_boundary(img: np.ndarray, roi_boundary: np.ndarray, use_auto_lesion: bool) -> tuple[np.ndarray, str]:
+    """准备最终 ROI 边界，并标记来源。
+
+    用户手动画出的黄色 ROI 永远优先；只有在没有手动 ROI 且用户启用自动识别时，
+    才使用传统图像分割生成的皮损候选。这样自动识别提供的是“初始候选”，用户
+    仍可通过手动画黄色边界覆盖它，避免自动结果不准时影响正式分析。
+    """
+
+    manual_roi = np.asarray(roi_boundary).astype(bool)
+    if manual_roi.any():
+        return manual_roi, "manual"
+    if not use_auto_lesion:
+        return manual_roi, "unknown"
+
+    lesion = _auto_lesion_mask(img)
+    if not lesion.any():
+        return manual_roi, "unknown"
+    return _mask_to_boundary(lesion), "auto"
+
+
+def _auto_lesion_mask(img: np.ndarray) -> np.ndarray:
+    """动态获取自动皮损候选函数，兼容 Streamlit 热更新模块缓存。"""
+
+    detector = getattr(colorroi_core, "auto_lesion_mask", None)
+    if detector is None:
+        reloaded_core = importlib.reload(colorroi_core)
+        detector = getattr(reloaded_core, "auto_lesion_mask")
+    return detector(img)
+
+
+def _mask_to_boundary(mask: np.ndarray) -> np.ndarray:
+    """动态获取 mask 转边界函数，兼容旧 Streamlit 进程缓存。"""
+
+    converter = getattr(colorroi_core, "mask_to_boundary", None)
+    if converter is None:
+        reloaded_core = importlib.reload(colorroi_core)
+        converter = getattr(reloaded_core, "mask_to_boundary")
+    return converter(mask)
+
+
 def _prepare_hair_mask_for_analysis(
     img: np.ndarray,
     roi_boundary: np.ndarray,
@@ -485,14 +531,15 @@ def _auto_hair_mask(img: np.ndarray) -> np.ndarray:
     return detector(img)
 
 
-def _render_previews(img: np.ndarray, roi_boundary: np.ndarray, hair_mask: np.ndarray) -> None:
+def _render_previews(img: np.ndarray, roi_boundary: np.ndarray, hair_mask: np.ndarray, roi_source: str) -> None:
     """渲染原图、ROI、修复图和热图预览。"""
 
     analysis = st.session_state.analysis
     display_hair = analysis.hair if analysis is not None else hair_mask
+    roi_caption = f"ROI / 毛发标注（ROI：{_roi_source_label(roi_source)}）"
     cols = st.columns(4)
     cols[0].image(colorroi_core.to_uint8_image(img), caption="原始图", use_container_width=True)
-    cols[1].image(_make_overlay_preview(img, roi_boundary, display_hair), caption="ROI / 毛发标注", use_container_width=True)
+    cols[1].image(_make_overlay_preview(img, roi_boundary, display_hair), caption=roi_caption, use_container_width=True)
     if analysis is not None:
         cols[2].image(colorroi_core.to_uint8_image(analysis.clean_image), caption="毛发修复后", use_container_width=True)
         cols[3].image(colorroi_core.to_uint8_image(analysis.heatmap), caption="DMDI 热图", use_container_width=True)
@@ -526,7 +573,7 @@ def _render_metrics() -> None:
     # Streamlit 的 metric 卡片在右侧结果栏中宽度较窄；把基础像素指标和颜色指标拆成两行，
     # 避免“灰/蓝灰/DMDI”挤在同一格里被浏览器截断成省略号。
     pixel_cols = st.columns(3)
-    pixel_cols[0].metric("ROI 面积", f"{analysis.roi_px} px")
+    pixel_cols[0].metric(f"ROI 面积（{_roi_source_label(st.session_state.roi_source)}）", f"{analysis.roi_px} px")
     pixel_cols[1].metric(f"毛发标注（{hair_source}）", f"{analysis.hair_px} px")
     pixel_cols[2].metric("有效区", f"{effective_px} px")
 
@@ -584,6 +631,7 @@ def _save_record(
             "gender": gender,
             "hair_clinical": hair_clinical,
             "pattern": pattern,
+            "roi_source": _roi_source_label(st.session_state.roi_source),
             "roi_px": analysis.roi_px,
             "roi_percent": round(analysis.roi_px / (h * w) * 100, 4),
             "hair_px": analysis.hair_px,
@@ -619,6 +667,17 @@ def _hair_source_label(analysis) -> str:
     if source == "auto":
         return "自动"
     if source == "manual":
+        return "手动"
+    return "未知"
+
+
+def _roi_source_label(source: str | None) -> str:
+    """返回 ROI 来源标签，用于区分手动画和自动皮损候选。"""
+
+    source_text = str(source or "")
+    if source_text == "auto":
+        return "自动候选"
+    if source_text == "manual":
         return "手动"
     return "未知"
 

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>pics 样张自动毛发标注复核</title>
+  <title>pics 样张自动皮损和毛发识别复核</title>
   <style>
     body {
       margin: 0;
@@ -104,27 +104,27 @@
 </head>
 <body>
   <header>
-    <h1>pics 样张自动毛发标注复核</h1>
-    <p class="note">本报告只用于确认“自动毛发/遮挡识别”效果，不做自动皮损分割。红色区域为当前算法自动识别的毛发候选，淡黄色区域只是批量复核脚本自动生成的整图内边缘 ROI，用来限定统计范围。正式分析时，皮损/ROI 仍由用户在页面中手动画出黄色边界；系统再在该 ROI 内自动检测毛发并计算颜色指标。</p>
+    <h1>pics 样张自动皮损和毛发识别复核</h1>
+    <p class="note">淡黄色区域为当前算法自动生成的皮损/ROI 候选，红色区域为 ROI 内自动识别的毛发/遮挡候选。正式分析时，用户可以直接采用自动 ROI，也可以在页面中手动画黄色边界覆盖自动候选；系统会在最终 ROI 内排除毛发后计算颜色指标。</p>
   </header>
   <main>
     <section class="card">
       <h2>微信图片_20260620160243_38_5906.jpg</h2>
       <div class="metrics">
         <div class="metric"><span class="label">尺寸</span><span class="value">1920 x 1080</span></div>
-        <div class="metric"><span class="label">ROI 面积</span><span class="value">1845684 px</span></div>
-        <div class="metric"><span class="label">毛发标注</span><span class="value">5490 px</span></div>
-        <div class="metric"><span class="label">毛发占 ROI</span><span class="value">0.2975%</span></div>
-        <div class="metric"><span class="label">有效区</span><span class="value">1840194 px</span></div>
-        <div class="metric"><span class="label">黑</span><span class="value">11.1893%</span></div>
-        <div class="metric"><span class="label">棕</span><span class="value">76.2683%</span></div>
-        <div class="metric"><span class="label">灰</span><span class="value">12.5424%</span></div>
+        <div class="metric"><span class="label">ROI 面积</span><span class="value">1217099 px</span></div>
+        <div class="metric"><span class="label">毛发标注</span><span class="value">4321 px</span></div>
+        <div class="metric"><span class="label">毛发占 ROI</span><span class="value">0.3550%</span></div>
+        <div class="metric"><span class="label">有效区</span><span class="value">1212778 px</span></div>
+        <div class="metric"><span class="label">黑</span><span class="value">5.7528%</span></div>
+        <div class="metric"><span class="label">棕</span><span class="value">93.8102%</span></div>
+        <div class="metric"><span class="label">灰</span><span class="value">0.4370%</span></div>
         <div class="metric"><span class="label">蓝灰</span><span class="value">0.0000%</span></div>
-        <div class="metric"><span class="label">DMDI</span><span class="value">1.013500</span></div>
+        <div class="metric"><span class="label">DMDI</span><span class="value">0.946800</span></div>
       </div>
       <div class="images">
         <figure><figcaption>原图</figcaption><img src="previews/微信图片_20260620160243_38_5906_original.jpg" alt="原图"></figure>
-        <figure><figcaption>自动毛发/遮挡标注叠加（红色；非皮损分割）</figcaption><img src="previews/微信图片_20260620160243_38_5906_hair_overlay.jpg" alt="自动毛发/遮挡标注叠加（红色；非皮损分割）"></figure>
+        <figure><figcaption>自动皮损候选（淡黄）/ 毛发遮挡（红色）</figcaption><img src="previews/微信图片_20260620160243_38_5906_hair_overlay.jpg" alt="自动皮损候选（淡黄）/ 毛发遮挡（红色）"></figure>
         <figure><figcaption>DMDI 热图</figcaption><img src="previews/微信图片_20260620160243_38_5906_heatmap.jpg" alt="DMDI 热图"></figure>
       </div>
     </section>
@@ -132,19 +132,19 @@
       <h2>微信图片_20260620160310_39_5906.jpg</h2>
       <div class="metrics">
         <div class="metric"><span class="label">尺寸</span><span class="value">1920 x 1080</span></div>
-        <div class="metric"><span class="label">ROI 面积</span><span class="value">1845684 px</span></div>
-        <div class="metric"><span class="label">毛发标注</span><span class="value">26811 px</span></div>
-        <div class="metric"><span class="label">毛发占 ROI</span><span class="value">1.4526%</span></div>
-        <div class="metric"><span class="label">有效区</span><span class="value">1818873 px</span></div>
-        <div class="metric"><span class="label">黑</span><span class="value">10.6177%</span></div>
-        <div class="metric"><span class="label">棕</span><span class="value">78.7350%</span></div>
-        <div class="metric"><span class="label">灰</span><span class="value">10.6473%</span></div>
+        <div class="metric"><span class="label">ROI 面积</span><span class="value">1154751 px</span></div>
+        <div class="metric"><span class="label">毛发标注</span><span class="value">23189 px</span></div>
+        <div class="metric"><span class="label">毛发占 ROI</span><span class="value">2.0081%</span></div>
+        <div class="metric"><span class="label">有效区</span><span class="value">1131562 px</span></div>
+        <div class="metric"><span class="label">黑</span><span class="value">22.7060%</span></div>
+        <div class="metric"><span class="label">棕</span><span class="value">76.8701%</span></div>
+        <div class="metric"><span class="label">灰</span><span class="value">0.4239%</span></div>
         <div class="metric"><span class="label">蓝灰</span><span class="value">0.0000%</span></div>
-        <div class="metric"><span class="label">DMDI</span><span class="value">1.000300</span></div>
+        <div class="metric"><span class="label">DMDI</span><span class="value">0.777200</span></div>
       </div>
       <div class="images">
         <figure><figcaption>原图</figcaption><img src="previews/微信图片_20260620160310_39_5906_original.jpg" alt="原图"></figure>
-        <figure><figcaption>自动毛发/遮挡标注叠加（红色；非皮损分割）</figcaption><img src="previews/微信图片_20260620160310_39_5906_hair_overlay.jpg" alt="自动毛发/遮挡标注叠加（红色；非皮损分割）"></figure>
+        <figure><figcaption>自动皮损候选（淡黄）/ 毛发遮挡（红色）</figcaption><img src="previews/微信图片_20260620160310_39_5906_hair_overlay.jpg" alt="自动皮损候选（淡黄）/ 毛发遮挡（红色）"></figure>
         <figure><figcaption>DMDI 热图</figcaption><img src="previews/微信图片_20260620160310_39_5906_heatmap.jpg" alt="DMDI 热图"></figure>
       </div>
     </section>
@@ -152,19 +152,19 @@
       <h2>微信图片_20260620160325_40_5906.jpg</h2>
       <div class="metrics">
         <div class="metric"><span class="label">尺寸</span><span class="value">1920 x 1080</span></div>
-        <div class="metric"><span class="label">ROI 面积</span><span class="value">1845684 px</span></div>
-        <div class="metric"><span class="label">毛发标注</span><span class="value">6142 px</span></div>
-        <div class="metric"><span class="label">毛发占 ROI</span><span class="value">0.3328%</span></div>
-        <div class="metric"><span class="label">有效区</span><span class="value">1839542 px</span></div>
-        <div class="metric"><span class="label">黑</span><span class="value">9.6803%</span></div>
-        <div class="metric"><span class="label">棕</span><span class="value">66.8870%</span></div>
-        <div class="metric"><span class="label">灰</span><span class="value">23.4327%</span></div>
+        <div class="metric"><span class="label">ROI 面积</span><span class="value">825462 px</span></div>
+        <div class="metric"><span class="label">毛发标注</span><span class="value">2720 px</span></div>
+        <div class="metric"><span class="label">毛发占 ROI</span><span class="value">0.3295%</span></div>
+        <div class="metric"><span class="label">有效区</span><span class="value">822742 px</span></div>
+        <div class="metric"><span class="label">黑</span><span class="value">22.8514%</span></div>
+        <div class="metric"><span class="label">棕</span><span class="value">76.7074%</span></div>
+        <div class="metric"><span class="label">灰</span><span class="value">0.4412%</span></div>
         <div class="metric"><span class="label">蓝灰</span><span class="value">0.0000%</span></div>
-        <div class="metric"><span class="label">DMDI</span><span class="value">1.137500</span></div>
+        <div class="metric"><span class="label">DMDI</span><span class="value">0.775900</span></div>
       </div>
       <div class="images">
         <figure><figcaption>原图</figcaption><img src="previews/微信图片_20260620160325_40_5906_original.jpg" alt="原图"></figure>
-        <figure><figcaption>自动毛发/遮挡标注叠加（红色；非皮损分割）</figcaption><img src="previews/微信图片_20260620160325_40_5906_hair_overlay.jpg" alt="自动毛发/遮挡标注叠加（红色；非皮损分割）"></figure>
+        <figure><figcaption>自动皮损候选（淡黄）/ 毛发遮挡（红色）</figcaption><img src="previews/微信图片_20260620160325_40_5906_hair_overlay.jpg" alt="自动皮损候选（淡黄）/ 毛发遮挡（红色）"></figure>
         <figure><figcaption>DMDI 热图</figcaption><img src="previews/微信图片_20260620160325_40_5906_heatmap.jpg" alt="DMDI 热图"></figure>
       </div>
     </section>
@@ -172,19 +172,19 @@
       <h2>微信图片_20260620160343_41_5906.jpg</h2>
       <div class="metrics">
         <div class="metric"><span class="label">尺寸</span><span class="value">1920 x 1080</span></div>
-        <div class="metric"><span class="label">ROI 面积</span><span class="value">1845684 px</span></div>
-        <div class="metric"><span class="label">毛发标注</span><span class="value">4418 px</span></div>
-        <div class="metric"><span class="label">毛发占 ROI</span><span class="value">0.2394%</span></div>
-        <div class="metric"><span class="label">有效区</span><span class="value">1841266 px</span></div>
-        <div class="metric"><span class="label">黑</span><span class="value">11.2412%</span></div>
-        <div class="metric"><span class="label">棕</span><span class="value">75.9643%</span></div>
-        <div class="metric"><span class="label">灰</span><span class="value">12.7945%</span></div>
+        <div class="metric"><span class="label">ROI 面积</span><span class="value">1136762 px</span></div>
+        <div class="metric"><span class="label">毛发标注</span><span class="value">3437 px</span></div>
+        <div class="metric"><span class="label">毛发占 ROI</span><span class="value">0.3024%</span></div>
+        <div class="metric"><span class="label">有效区</span><span class="value">1133325 px</span></div>
+        <div class="metric"><span class="label">黑</span><span class="value">29.3426%</span></div>
+        <div class="metric"><span class="label">棕</span><span class="value">70.3173%</span></div>
+        <div class="metric"><span class="label">灰</span><span class="value">0.3401%</span></div>
         <div class="metric"><span class="label">蓝灰</span><span class="value">0.0000%</span></div>
-        <div class="metric"><span class="label">DMDI</span><span class="value">1.015500</span></div>
+        <div class="metric"><span class="label">DMDI</span><span class="value">0.710000</span></div>
       </div>
       <div class="images">
         <figure><figcaption>原图</figcaption><img src="previews/微信图片_20260620160343_41_5906_original.jpg" alt="原图"></figure>
-        <figure><figcaption>自动毛发/遮挡标注叠加（红色；非皮损分割）</figcaption><img src="previews/微信图片_20260620160343_41_5906_hair_overlay.jpg" alt="自动毛发/遮挡标注叠加（红色；非皮损分割）"></figure>
+        <figure><figcaption>自动皮损候选（淡黄）/ 毛发遮挡（红色）</figcaption><img src="previews/微信图片_20260620160343_41_5906_hair_overlay.jpg" alt="自动皮损候选（淡黄）/ 毛发遮挡（红色）"></figure>
         <figure><figcaption>DMDI 热图</figcaption><img src="previews/微信图片_20260620160343_41_5906_heatmap.jpg" alt="DMDI 热图"></figure>
       </div>
     </section>
@@ -192,19 +192,19 @@
       <h2>微信图片_20260620160400_42_5906.jpg</h2>
       <div class="metrics">
         <div class="metric"><span class="label">尺寸</span><span class="value">1920 x 1080</span></div>
-        <div class="metric"><span class="label">ROI 面积</span><span class="value">1845684 px</span></div>
-        <div class="metric"><span class="label">毛发标注</span><span class="value">5014 px</span></div>
-        <div class="metric"><span class="label">毛发占 ROI</span><span class="value">0.2717%</span></div>
-        <div class="metric"><span class="label">有效区</span><span class="value">1840670 px</span></div>
-        <div class="metric"><span class="label">黑</span><span class="value">10.8536%</span></div>
-        <div class="metric"><span class="label">棕</span><span class="value">76.3876%</span></div>
-        <div class="metric"><span class="label">灰</span><span class="value">12.7588%</span></div>
-        <div class="metric"><span class="label">蓝灰</span><span class="value">0.0000%</span></div>
-        <div class="metric"><span class="label">DMDI</span><span class="value">1.019100</span></div>
+        <div class="metric"><span class="label">ROI 面积</span><span class="value">1190651 px</span></div>
+        <div class="metric"><span class="label">毛发标注</span><span class="value">3940 px</span></div>
+        <div class="metric"><span class="label">毛发占 ROI</span><span class="value">0.3309%</span></div>
+        <div class="metric"><span class="label">有效区</span><span class="value">1186711 px</span></div>
+        <div class="metric"><span class="label">黑</span><span class="value">3.3301%</span></div>
+        <div class="metric"><span class="label">棕</span><span class="value">31.3116%</span></div>
+        <div class="metric"><span class="label">灰</span><span class="value">64.8983%</span></div>
+        <div class="metric"><span class="label">蓝灰</span><span class="value">0.4600%</span></div>
+        <div class="metric"><span class="label">DMDI</span><span class="value">1.624900</span></div>
       </div>
       <div class="images">
         <figure><figcaption>原图</figcaption><img src="previews/微信图片_20260620160400_42_5906_original.jpg" alt="原图"></figure>
-        <figure><figcaption>自动毛发/遮挡标注叠加（红色；非皮损分割）</figcaption><img src="previews/微信图片_20260620160400_42_5906_hair_overlay.jpg" alt="自动毛发/遮挡标注叠加（红色；非皮损分割）"></figure>
+        <figure><figcaption>自动皮损候选（淡黄）/ 毛发遮挡（红色）</figcaption><img src="previews/微信图片_20260620160400_42_5906_hair_overlay.jpg" alt="自动皮损候选（淡黄）/ 毛发遮挡（红色）"></figure>
         <figure><figcaption>DMDI 热图</figcaption><img src="previews/微信图片_20260620160400_42_5906_heatmap.jpg" alt="DMDI 热图"></figure>
       </div>
     </section>
@@ -212,19 +212,19 @@
       <h2>微信图片_20260620160452_43_5906.jpg</h2>
       <div class="metrics">
         <div class="metric"><span class="label">尺寸</span><span class="value">1920 x 1080</span></div>
-        <div class="metric"><span class="label">ROI 面积</span><span class="value">1845684 px</span></div>
-        <div class="metric"><span class="label">毛发标注</span><span class="value">14848 px</span></div>
-        <div class="metric"><span class="label">毛发占 ROI</span><span class="value">0.8045%</span></div>
-        <div class="metric"><span class="label">有效区</span><span class="value">1830836 px</span></div>
-        <div class="metric"><span class="label">黑</span><span class="value">11.5427%</span></div>
-        <div class="metric"><span class="label">棕</span><span class="value">66.9491%</span></div>
-        <div class="metric"><span class="label">灰</span><span class="value">21.5082%</span></div>
+        <div class="metric"><span class="label">ROI 面积</span><span class="value">790473 px</span></div>
+        <div class="metric"><span class="label">毛发标注</span><span class="value">8918 px</span></div>
+        <div class="metric"><span class="label">毛发占 ROI</span><span class="value">1.1282%</span></div>
+        <div class="metric"><span class="label">有效区</span><span class="value">781555 px</span></div>
+        <div class="metric"><span class="label">黑</span><span class="value">4.7713%</span></div>
+        <div class="metric"><span class="label">棕</span><span class="value">71.2492%</span></div>
+        <div class="metric"><span class="label">灰</span><span class="value">23.9795%</span></div>
         <div class="metric"><span class="label">蓝灰</span><span class="value">0.0000%</span></div>
-        <div class="metric"><span class="label">DMDI</span><span class="value">1.099700</span></div>
+        <div class="metric"><span class="label">DMDI</span><span class="value">1.192100</span></div>
       </div>
       <div class="images">
         <figure><figcaption>原图</figcaption><img src="previews/微信图片_20260620160452_43_5906_original.jpg" alt="原图"></figure>
-        <figure><figcaption>自动毛发/遮挡标注叠加（红色；非皮损分割）</figcaption><img src="previews/微信图片_20260620160452_43_5906_hair_overlay.jpg" alt="自动毛发/遮挡标注叠加（红色；非皮损分割）"></figure>
+        <figure><figcaption>自动皮损候选（淡黄）/ 毛发遮挡（红色）</figcaption><img src="previews/微信图片_20260620160452_43_5906_hair_overlay.jpg" alt="自动皮损候选（淡黄）/ 毛发遮挡（红色）"></figure>
         <figure><figcaption>DMDI 热图</figcaption><img src="previews/微信图片_20260620160452_43_5906_heatmap.jpg" alt="DMDI 热图"></figure>
       </div>
     </section>
@@ -232,19 +232,19 @@
       <h2>微信图片_20260620160510_44_5906.jpg</h2>
       <div class="metrics">
         <div class="metric"><span class="label">尺寸</span><span class="value">1920 x 1080</span></div>
-        <div class="metric"><span class="label">ROI 面积</span><span class="value">1845684 px</span></div>
-        <div class="metric"><span class="label">毛发标注</span><span class="value">12142 px</span></div>
-        <div class="metric"><span class="label">毛发占 ROI</span><span class="value">0.6579%</span></div>
-        <div class="metric"><span class="label">有效区</span><span class="value">1833542 px</span></div>
-        <div class="metric"><span class="label">黑</span><span class="value">11.2630%</span></div>
-        <div class="metric"><span class="label">棕</span><span class="value">73.4879%</span></div>
-        <div class="metric"><span class="label">灰</span><span class="value">15.2492%</span></div>
+        <div class="metric"><span class="label">ROI 面积</span><span class="value">1208681 px</span></div>
+        <div class="metric"><span class="label">毛发标注</span><span class="value">9762 px</span></div>
+        <div class="metric"><span class="label">毛发占 ROI</span><span class="value">0.8077%</span></div>
+        <div class="metric"><span class="label">有效区</span><span class="value">1198919 px</span></div>
+        <div class="metric"><span class="label">黑</span><span class="value">6.4310%</span></div>
+        <div class="metric"><span class="label">棕</span><span class="value">71.6184%</span></div>
+        <div class="metric"><span class="label">灰</span><span class="value">21.9506%</span></div>
         <div class="metric"><span class="label">蓝灰</span><span class="value">0.0000%</span></div>
-        <div class="metric"><span class="label">DMDI</span><span class="value">1.039900</span></div>
+        <div class="metric"><span class="label">DMDI</span><span class="value">1.155200</span></div>
       </div>
       <div class="images">
         <figure><figcaption>原图</figcaption><img src="previews/微信图片_20260620160510_44_5906_original.jpg" alt="原图"></figure>
-        <figure><figcaption>自动毛发/遮挡标注叠加（红色；非皮损分割）</figcaption><img src="previews/微信图片_20260620160510_44_5906_hair_overlay.jpg" alt="自动毛发/遮挡标注叠加（红色；非皮损分割）"></figure>
+        <figure><figcaption>自动皮损候选（淡黄）/ 毛发遮挡（红色）</figcaption><img src="previews/微信图片_20260620160510_44_5906_hair_overlay.jpg" alt="自动皮损候选（淡黄）/ 毛发遮挡（红色）"></figure>
         <figure><figcaption>DMDI 热图</figcaption><img src="previews/微信图片_20260620160510_44_5906_heatmap.jpg" alt="DMDI 热图"></figure>
       </div>
     </section>
@@ -252,19 +252,19 @@
       <h2>微信图片_20260620160530_46_5906.jpg</h2>
       <div class="metrics">
         <div class="metric"><span class="label">尺寸</span><span class="value">1920 x 1080</span></div>
-        <div class="metric"><span class="label">ROI 面积</span><span class="value">1845684 px</span></div>
-        <div class="metric"><span class="label">毛发标注</span><span class="value">3403 px</span></div>
-        <div class="metric"><span class="label">毛发占 ROI</span><span class="value">0.1844%</span></div>
-        <div class="metric"><span class="label">有效区</span><span class="value">1842281 px</span></div>
-        <div class="metric"><span class="label">黑</span><span class="value">28.9540%</span></div>
-        <div class="metric"><span class="label">棕</span><span class="value">32.5740%</span></div>
-        <div class="metric"><span class="label">灰</span><span class="value">38.4720%</span></div>
+        <div class="metric"><span class="label">ROI 面积</span><span class="value">1240448 px</span></div>
+        <div class="metric"><span class="label">毛发标注</span><span class="value">2725 px</span></div>
+        <div class="metric"><span class="label">毛发占 ROI</span><span class="value">0.2197%</span></div>
+        <div class="metric"><span class="label">有效区</span><span class="value">1237723 px</span></div>
+        <div class="metric"><span class="label">黑</span><span class="value">29.3945%</span></div>
+        <div class="metric"><span class="label">棕</span><span class="value">22.8896%</span></div>
+        <div class="metric"><span class="label">灰</span><span class="value">47.7159%</span></div>
         <div class="metric"><span class="label">蓝灰</span><span class="value">0.0000%</span></div>
-        <div class="metric"><span class="label">DMDI</span><span class="value">1.095200</span></div>
+        <div class="metric"><span class="label">DMDI</span><span class="value">1.183200</span></div>
       </div>
       <div class="images">
         <figure><figcaption>原图</figcaption><img src="previews/微信图片_20260620160530_46_5906_original.jpg" alt="原图"></figure>
-        <figure><figcaption>自动毛发/遮挡标注叠加（红色；非皮损分割）</figcaption><img src="previews/微信图片_20260620160530_46_5906_hair_overlay.jpg" alt="自动毛发/遮挡标注叠加（红色；非皮损分割）"></figure>
+        <figure><figcaption>自动皮损候选（淡黄）/ 毛发遮挡（红色）</figcaption><img src="previews/微信图片_20260620160530_46_5906_hair_overlay.jpg" alt="自动皮损候选（淡黄）/ 毛发遮挡（红色）"></figure>
         <figure><figcaption>DMDI 热图</figcaption><img src="previews/微信图片_20260620160530_46_5906_heatmap.jpg" alt="DMDI 热图"></figure>
       </div>
     </section>

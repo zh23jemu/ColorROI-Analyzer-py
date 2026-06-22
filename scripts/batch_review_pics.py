@@ -1,15 +1,15 @@
-"""批量复核 pics 样张的自动毛发标注结果。
+"""批量复核 pics 样张的自动皮损候选和自动毛发标注结果。
 
-这个脚本用于开发阶段快速检查自动毛发检测质量：它会遍历 `pics/` 中的样张，
-为每张图生成接近整图的矩形 ROI，调用当前核心分析逻辑，并输出：
+这个脚本用于开发阶段快速检查自动皮损候选和自动毛发检测质量：它会遍历
+`pics/` 中的样张，为每张图生成自动 ROI 候选，调用当前核心分析逻辑，并输出：
 
 - `reports/pics_hair_review/index.html`：依赖 `previews/` 目录的本地复核报告；
 - `reports/pics_hair_review/index_standalone.html`：图片已内嵌的单文件报告，适合直接发给用户；
 - `reports/pics_hair_review/results.csv`：每张图的 ROI、毛发像素和颜色指标；
 - `reports/pics_hair_review/previews/`：每张图的原图缩略图、毛发叠加图和热图。
 
-注意：这里的 ROI 是脚本自动生成的整图内边缘矩形，只用于观察“自动毛发标注”
-效果；正式结果仍应以 Streamlit 页面中用户手动画出的黄色 ROI 为准。
+注意：这里的 ROI 是传统图像分割生成的自动候选，只用于观察自动识别效果；
+正式结果仍可在 Streamlit 页面中用手动画出的黄色 ROI 覆盖自动候选。
 """
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ import numpy as np
 from PIL import Image
 
 from colorroi_analyzer.analysis import analyze_image
-from colorroi_analyzer.core import load_rgb_image, to_uint8_image
+from colorroi_analyzer.core import auto_lesion_mask, load_rgb_image, mask_to_boundary, to_uint8_image
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -82,13 +82,17 @@ def main() -> None:
 def _analyze_one(path: Path) -> ReviewRow:
     """分析单张图片并保存对应预览图。
 
-    批量复核没有人工黄色 ROI，因此这里用一个距图像边缘 3% 的矩形边界模拟 ROI。
-    这样既能覆盖主要皮肤区域，又避免极少数图片边缘压缩噪点影响毛发比例统计。
+    批量复核没有人工黄色 ROI，因此这里使用自动皮损候选作为 ROI。报告用于让
+    用户确认候选范围是否合理；正式页面里仍然允许手动画黄色 ROI 覆盖自动候选。
     """
 
     img = load_rgb_image(path)
     height, width = img.shape[:2]
-    roi_boundary = _make_inset_rectangle_boundary(height, width)
+    lesion = auto_lesion_mask(img)
+    if lesion.any():
+        roi_boundary = mask_to_boundary(lesion)
+    else:
+        roi_boundary = _make_inset_rectangle_boundary(height, width)
 
     # hair_mask 传 None 时，核心分析函数会按 TXT 需求自动执行 black-hat + Otsu 毛发检测。
     result = analyze_image(
@@ -202,7 +206,7 @@ def _write_html(rows: list[ReviewRow], output_path: Path, inline_assets: bool) -
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>pics 样张自动毛发标注复核</title>
+  <title>pics 样张自动皮损和毛发识别复核</title>
   <style>
     body {{
       margin: 0;
@@ -303,8 +307,8 @@ def _write_html(rows: list[ReviewRow], output_path: Path, inline_assets: bool) -
 </head>
 <body>
   <header>
-    <h1>pics 样张自动毛发标注复核</h1>
-    <p class="note">本报告只用于确认“自动毛发/遮挡识别”效果，不做自动皮损分割。红色区域为当前算法自动识别的毛发候选，淡黄色区域只是批量复核脚本自动生成的整图内边缘 ROI，用来限定统计范围。正式分析时，皮损/ROI 仍由用户在页面中手动画出黄色边界；系统再在该 ROI 内自动检测毛发并计算颜色指标。</p>
+    <h1>pics 样张自动皮损和毛发识别复核</h1>
+    <p class="note">淡黄色区域为当前算法自动生成的皮损/ROI 候选，红色区域为 ROI 内自动识别的毛发/遮挡候选。正式分析时，用户可以直接采用自动 ROI，也可以在页面中手动画黄色边界覆盖自动候选；系统会在最终 ROI 内排除毛发后计算颜色指标。</p>
   </header>
   <main>
 {cards}
@@ -335,7 +339,7 @@ def _render_card(row: ReviewRow, inline_assets: bool) -> str:
       </div>
       <div class="images">
         {_figure(row.original_preview, "原图", inline_assets)}
-        {_figure(row.overlay_preview, "自动毛发/遮挡标注叠加（红色；非皮损分割）", inline_assets)}
+        {_figure(row.overlay_preview, "自动皮损候选（淡黄）/ 毛发遮挡（红色）", inline_assets)}
         {_figure(row.heatmap_preview, "DMDI 热图", inline_assets)}
       </div>
     </section>"""
