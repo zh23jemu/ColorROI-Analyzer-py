@@ -13,6 +13,7 @@
 
 from __future__ import annotations
 
+import base64
 import csv
 import html
 from dataclasses import dataclass
@@ -71,7 +72,8 @@ def main() -> None:
 
     rows = [_analyze_one(path) for path in image_paths]
     _write_csv(rows)
-    _write_html(rows)
+    _write_html(rows, REPORT_DIR / "index.html", inline_assets=False)
+    _write_html(rows, REPORT_DIR / "index_standalone.html", inline_assets=True)
 
     print(f"已生成 {len(rows)} 张样张的毛发标注复核报告：{REPORT_DIR / 'index.html'}")
 
@@ -183,10 +185,17 @@ def _write_csv(rows: list[ReviewRow]) -> None:
             writer.writerow(row.__dict__)
 
 
-def _write_html(rows: list[ReviewRow]) -> None:
-    """生成可直接双击打开的 HTML 复核报告。"""
+def _write_html(rows: list[ReviewRow], output_path: Path, inline_assets: bool) -> None:
+    """生成 HTML 复核报告。
 
-    cards = "\n".join(_render_card(row) for row in rows)
+    参数:
+        rows: 批量分析后的样张结果。
+        output_path: 报告输出路径。
+        inline_assets: 为 True 时把预览图转换成 base64 data URL，生成可以单独发送的
+            HTML 文件；为 False 时保留相对路径，方便本地浏览和调试。
+    """
+
+    cards = "\n".join(_render_card(row, inline_assets) for row in rows)
     html_text = f"""<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -302,10 +311,10 @@ def _write_html(rows: list[ReviewRow]) -> None:
 </body>
 </html>
 """
-    (REPORT_DIR / "index.html").write_text(html_text, encoding="utf-8")
+    output_path.write_text(html_text, encoding="utf-8")
 
 
-def _render_card(row: ReviewRow) -> str:
+def _render_card(row: ReviewRow, inline_assets: bool) -> str:
     """渲染单张图片在 HTML 报告中的卡片。"""
 
     title = html.escape(row.file_name)
@@ -324,9 +333,9 @@ def _render_card(row: ReviewRow) -> str:
         {_metric("DMDI", f"{row.dmdi:.6f}")}
       </div>
       <div class="images">
-        {_figure(row.original_preview, "原图")}
-        {_figure(row.overlay_preview, "自动毛发标注叠加")}
-        {_figure(row.heatmap_preview, "DMDI 热图")}
+        {_figure(row.original_preview, "原图", inline_assets)}
+        {_figure(row.overlay_preview, "自动毛发标注叠加", inline_assets)}
+        {_figure(row.heatmap_preview, "DMDI 热图", inline_assets)}
       </div>
     </section>"""
 
@@ -337,10 +346,23 @@ def _metric(label: str, value: str) -> str:
     return f'<div class="metric"><span class="label">{html.escape(label)}</span><span class="value">{html.escape(value)}</span></div>'
 
 
-def _figure(src: str, caption: str) -> str:
+def _figure(src: str, caption: str, inline_assets: bool) -> str:
     """渲染一张报告图片。"""
 
-    return f'<figure><figcaption>{html.escape(caption)}</figcaption><img src="{html.escape(src)}" alt="{html.escape(caption)}"></figure>'
+    image_src = _inline_image_src(src) if inline_assets else src
+    return f'<figure><figcaption>{html.escape(caption)}</figcaption><img src="{html.escape(image_src)}" alt="{html.escape(caption)}"></figure>'
+
+
+def _inline_image_src(src: str) -> str:
+    """把报告中的相对图片路径转换成 JPEG data URL。
+
+    这样生成的 `index_standalone.html` 不再依赖 `previews/` 目录，适合通过微信、
+    邮件或网盘单文件发送给用户确认。
+    """
+
+    image_path = REPORT_DIR / src
+    encoded = base64.b64encode(image_path.read_bytes()).decode("ascii")
+    return f"data:image/jpeg;base64,{encoded}"
 
 
 def _safe_stem(path: Path) -> str:
