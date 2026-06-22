@@ -24,7 +24,6 @@
 
 ## TODO
 
-- 对比 R 版端到端样例结果，继续校准 Python 版默认 ROI 和颜色标签输出。
 - 进行浏览器端人工手绘流程复核，确认 Streamlit 画布标注提取与预览结果一致。
 
 ## Current Status
@@ -61,6 +60,7 @@
 - 优化 Streamlit 分析结果指标布局，将基础像素指标和颜色/DMDI 指标拆成两行，修复右侧“灰、蓝灰、DMDI”显示被截断的问题。
 - 新增 `scripts/batch_review_pics.py`，批量分析 `pics/` 样张并生成 HTML 复核报告、CSV 汇总、原图/毛发叠加/DMDI 热图预览；当前 8 张样张已全部生成报告。
 - `scripts/batch_review_pics.py` 新增单文件报告输出 `reports/pics_hair_review/index_standalone.html`，图片以内嵌 base64 形式写入，方便直接发给用户确认。
+- 用户已确认该项目可以使用 Python 版实现，不再要求与原 R 版做逐项端到端数值对照。
 
 ## Next TODO
 
@@ -71,11 +71,10 @@
 ## Open Issues
 
 - 当前 Windows 终端可能以非 UTF-8 编码显示中文脚本输出，计算结果不受影响。
-- Python 版核心算法已通过冒烟测试，但尚未完成与 R 版同一手绘 ROI 的逐项端到端对照。
 - Streamlit 画布的擦除/清空交互与原 Shiny 自定义 canvas 不完全一致，仍需浏览器端手工复核。
 - 当前 `.venv` 因已有 Streamlit 服务占用二进制文件，未完成依赖降级；但应用内兼容 shim 已验证可在 Streamlit 1.58 中补齐缺失 API。若重建全新 `.venv`，依赖约束会安装兼容范围内的 Streamlit。
 
 ## Architecture Decisions
 
 - Python 重建采用核心算法包和 Streamlit UI 分离的结构，便于非交互式测试和后续界面维护。
-- 原项目资源和测试产物保留为迁移对照资料，不作为 Python 运行入口。
+- 原项目资源和测试产物保留为迁移参考资料，不作为 Python 运行入口；后续验收以 Python 版功能和用户确认效果为准。
