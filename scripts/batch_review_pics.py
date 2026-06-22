@@ -3,7 +3,8 @@
 这个脚本用于开发阶段快速检查自动毛发检测质量：它会遍历 `pics/` 中的样张，
 为每张图生成接近整图的矩形 ROI，调用当前核心分析逻辑，并输出：
 
-- `reports/pics_hair_review/index.html`：可直接打开的人工复核报告；
+- `reports/pics_hair_review/index.html`：依赖 `previews/` 目录的本地复核报告；
+- `reports/pics_hair_review/index_standalone.html`：图片已内嵌的单文件报告，适合直接发给用户；
 - `reports/pics_hair_review/results.csv`：每张图的 ROI、毛发像素和颜色指标；
 - `reports/pics_hair_review/previews/`：每张图的原图缩略图、毛发叠加图和热图。
 
@@ -303,7 +304,7 @@ def _write_html(rows: list[ReviewRow], output_path: Path, inline_assets: bool) -
 <body>
   <header>
     <h1>pics 样张自动毛发标注复核</h1>
-    <p class="note">红色区域为当前算法自动识别的毛发候选，淡黄色区域为本批量脚本自动生成的整图内边缘 ROI。此报告用于先看自动毛发标注效果，正式分析仍以页面里手动画出的黄色 ROI 为准。</p>
+    <p class="note">本报告只用于确认“自动毛发/遮挡识别”效果，不做自动皮损分割。红色区域为当前算法自动识别的毛发候选，淡黄色区域只是批量复核脚本自动生成的整图内边缘 ROI，用来限定统计范围。正式分析时，皮损/ROI 仍由用户在页面中手动画出黄色边界；系统再在该 ROI 内自动检测毛发并计算颜色指标。</p>
   </header>
   <main>
 {cards}
@@ -334,7 +335,7 @@ def _render_card(row: ReviewRow, inline_assets: bool) -> str:
       </div>
       <div class="images">
         {_figure(row.original_preview, "原图", inline_assets)}
-        {_figure(row.overlay_preview, "自动毛发标注叠加", inline_assets)}
+        {_figure(row.overlay_preview, "自动毛发/遮挡标注叠加（红色；非皮损分割）", inline_assets)}
         {_figure(row.heatmap_preview, "DMDI 热图", inline_assets)}
       </div>
     </section>"""

@@ -105,7 +105,7 @@
 <body>
   <header>
     <h1>pics 样张自动毛发标注复核</h1>
-    <p class="note">红色区域为当前算法自动识别的毛发候选，淡黄色区域为本批量脚本自动生成的整图内边缘 ROI。此报告用于先看自动毛发标注效果，正式分析仍以页面里手动画出的黄色 ROI 为准。</p>
+    <p class="note">本报告只用于确认“自动毛发/遮挡识别”效果，不做自动皮损分割。红色区域为当前算法自动识别的毛发候选，淡黄色区域只是批量复核脚本自动生成的整图内边缘 ROI，用来限定统计范围。正式分析时，皮损/ROI 仍由用户在页面中手动画出黄色边界；系统再在该 ROI 内自动检测毛发并计算颜色指标。</p>
   </header>
   <main>
     <section class="card">
@@ -124,7 +124,7 @@
       </div>
       <div class="images">
         <figure><figcaption>原图</figcaption><img src="previews/微信图片_20260620160243_38_5906_original.jpg" alt="原图"></figure>
-        <figure><figcaption>自动毛发标注叠加</figcaption><img src="previews/微信图片_20260620160243_38_5906_hair_overlay.jpg" alt="自动毛发标注叠加"></figure>
+        <figure><figcaption>自动毛发/遮挡标注叠加（红色；非皮损分割）</figcaption><img src="previews/微信图片_20260620160243_38_5906_hair_overlay.jpg" alt="自动毛发/遮挡标注叠加（红色；非皮损分割）"></figure>
         <figure><figcaption>DMDI 热图</figcaption><img src="previews/微信图片_20260620160243_38_5906_heatmap.jpg" alt="DMDI 热图"></figure>
       </div>
     </section>
@@ -144,7 +144,7 @@
       </div>
       <div class="images">
         <figure><figcaption>原图</figcaption><img src="previews/微信图片_20260620160310_39_5906_original.jpg" alt="原图"></figure>
-        <figure><figcaption>自动毛发标注叠加</figcaption><img src="previews/微信图片_20260620160310_39_5906_hair_overlay.jpg" alt="自动毛发标注叠加"></figure>
+        <figure><figcaption>自动毛发/遮挡标注叠加（红色；非皮损分割）</figcaption><img src="previews/微信图片_20260620160310_39_5906_hair_overlay.jpg" alt="自动毛发/遮挡标注叠加（红色；非皮损分割）"></figure>
         <figure><figcaption>DMDI 热图</figcaption><img src="previews/微信图片_20260620160310_39_5906_heatmap.jpg" alt="DMDI 热图"></figure>
       </div>
     </section>
@@ -164,7 +164,7 @@
       </div>
       <div class="images">
         <figure><figcaption>原图</figcaption><img src="previews/微信图片_20260620160325_40_5906_original.jpg" alt="原图"></figure>
-        <figure><figcaption>自动毛发标注叠加</figcaption><img src="previews/微信图片_20260620160325_40_5906_hair_overlay.jpg" alt="自动毛发标注叠加"></figure>
+        <figure><figcaption>自动毛发/遮挡标注叠加（红色；非皮损分割）</figcaption><img src="previews/微信图片_20260620160325_40_5906_hair_overlay.jpg" alt="自动毛发/遮挡标注叠加（红色；非皮损分割）"></figure>
         <figure><figcaption>DMDI 热图</figcaption><img src="previews/微信图片_20260620160325_40_5906_heatmap.jpg" alt="DMDI 热图"></figure>
       </div>
     </section>
@@ -184,7 +184,7 @@
       </div>
       <div class="images">
         <figure><figcaption>原图</figcaption><img src="previews/微信图片_20260620160343_41_5906_original.jpg" alt="原图"></figure>
-        <figure><figcaption>自动毛发标注叠加</figcaption><img src="previews/微信图片_20260620160343_41_5906_hair_overlay.jpg" alt="自动毛发标注叠加"></figure>
+        <figure><figcaption>自动毛发/遮挡标注叠加（红色；非皮损分割）</figcaption><img src="previews/微信图片_20260620160343_41_5906_hair_overlay.jpg" alt="自动毛发/遮挡标注叠加（红色；非皮损分割）"></figure>
         <figure><figcaption>DMDI 热图</figcaption><img src="previews/微信图片_20260620160343_41_5906_heatmap.jpg" alt="DMDI 热图"></figure>
       </div>
     </section>
@@ -204,7 +204,7 @@
       </div>
       <div class="images">
         <figure><figcaption>原图</figcaption><img src="previews/微信图片_20260620160400_42_5906_original.jpg" alt="原图"></figure>
-        <figure><figcaption>自动毛发标注叠加</figcaption><img src="previews/微信图片_20260620160400_42_5906_hair_overlay.jpg" alt="自动毛发标注叠加"></figure>
+        <figure><figcaption>自动毛发/遮挡标注叠加（红色；非皮损分割）</figcaption><img src="previews/微信图片_20260620160400_42_5906_hair_overlay.jpg" alt="自动毛发/遮挡标注叠加（红色；非皮损分割）"></figure>
         <figure><figcaption>DMDI 热图</figcaption><img src="previews/微信图片_20260620160400_42_5906_heatmap.jpg" alt="DMDI 热图"></figure>
       </div>
     </section>
@@ -224,7 +224,7 @@
       </div>
       <div class="images">
         <figure><figcaption>原图</figcaption><img src="previews/微信图片_20260620160452_43_5906_original.jpg" alt="原图"></figure>
-        <figure><figcaption>自动毛发标注叠加</figcaption><img src="previews/微信图片_20260620160452_43_5906_hair_overlay.jpg" alt="自动毛发标注叠加"></figure>
+        <figure><figcaption>自动毛发/遮挡标注叠加（红色；非皮损分割）</figcaption><img src="previews/微信图片_20260620160452_43_5906_hair_overlay.jpg" alt="自动毛发/遮挡标注叠加（红色；非皮损分割）"></figure>
         <figure><figcaption>DMDI 热图</figcaption><img src="previews/微信图片_20260620160452_43_5906_heatmap.jpg" alt="DMDI 热图"></figure>
       </div>
     </section>
@@ -244,7 +244,7 @@
       </div>
       <div class="images">
         <figure><figcaption>原图</figcaption><img src="previews/微信图片_20260620160510_44_5906_original.jpg" alt="原图"></figure>
-        <figure><figcaption>自动毛发标注叠加</figcaption><img src="previews/微信图片_20260620160510_44_5906_hair_overlay.jpg" alt="自动毛发标注叠加"></figure>
+        <figure><figcaption>自动毛发/遮挡标注叠加（红色；非皮损分割）</figcaption><img src="previews/微信图片_20260620160510_44_5906_hair_overlay.jpg" alt="自动毛发/遮挡标注叠加（红色；非皮损分割）"></figure>
         <figure><figcaption>DMDI 热图</figcaption><img src="previews/微信图片_20260620160510_44_5906_heatmap.jpg" alt="DMDI 热图"></figure>
       </div>
     </section>
@@ -264,7 +264,7 @@
       </div>
       <div class="images">
         <figure><figcaption>原图</figcaption><img src="previews/微信图片_20260620160530_46_5906_original.jpg" alt="原图"></figure>
-        <figure><figcaption>自动毛发标注叠加</figcaption><img src="previews/微信图片_20260620160530_46_5906_hair_overlay.jpg" alt="自动毛发标注叠加"></figure>
+        <figure><figcaption>自动毛发/遮挡标注叠加（红色；非皮损分割）</figcaption><img src="previews/微信图片_20260620160530_46_5906_hair_overlay.jpg" alt="自动毛发/遮挡标注叠加（红色；非皮损分割）"></figure>
         <figure><figcaption>DMDI 热图</figcaption><img src="previews/微信图片_20260620160530_46_5906_heatmap.jpg" alt="DMDI 热图"></figure>
       </div>
     </section>
