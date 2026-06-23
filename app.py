@@ -538,14 +538,31 @@ def _render_previews(img: np.ndarray, roi_boundary: np.ndarray, hair_mask: np.nd
     display_hair = analysis.hair if analysis is not None else hair_mask
     roi_caption = f"ROI / 毛发标注（ROI：{_roi_source_label(roi_source)}）"
     cols = st.columns(4)
-    cols[0].image(colorroi_core.to_uint8_image(img), caption="原始图", use_container_width=True)
-    cols[1].image(_make_overlay_preview(img, roi_boundary, display_hair), caption=roi_caption, use_container_width=True)
+    _image(cols[0], colorroi_core.to_uint8_image(img), caption="原始图")
+    _image(cols[1], _make_overlay_preview(img, roi_boundary, display_hair), caption=roi_caption)
     if analysis is not None:
-        cols[2].image(colorroi_core.to_uint8_image(analysis.clean_image), caption="毛发修复后", use_container_width=True)
-        cols[3].image(colorroi_core.to_uint8_image(analysis.heatmap), caption="DMDI 热图", use_container_width=True)
+        _image(cols[2], colorroi_core.to_uint8_image(analysis.clean_image), caption="毛发修复后")
+        _image(cols[3], colorroi_core.to_uint8_image(analysis.heatmap), caption="DMDI 热图")
     else:
         cols[2].empty()
         cols[3].empty()
+
+
+def _image(container, image, *, caption: str) -> None:
+    """兼容不同 Streamlit 版本的图片渲染参数。
+
+    Streamlit 1.40 以后推荐使用 `use_container_width`，但云端当前依赖约束会安装
+    1.39.x，该版本的 `st.image()` 还没有这个参数。这里优先按新版参数调用；
+    如果旧版抛出 `TypeError`，再退回旧参数 `use_column_width`，避免上传图片后预览
+    区域因为 API 差异直接报错。
+    """
+
+    try:
+        container.image(image, caption=caption, use_container_width=True)
+    except TypeError as exc:
+        if "use_container_width" not in str(exc):
+            raise
+        container.image(image, caption=caption, use_column_width=True)
 
 
 def _make_overlay_preview(img: np.ndarray, roi_boundary: np.ndarray, hair_mask: np.ndarray) -> Image.Image:

@@ -10,6 +10,8 @@ htmlcov/
 
 # Streamlit / 本地运行态
 .streamlit/secrets.toml
+colorroi-deploy.zip
+colorroi-user-data-*.sh
 
 # 构建与打包输出
 build/
