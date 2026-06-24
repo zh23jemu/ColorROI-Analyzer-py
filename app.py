@@ -75,6 +75,7 @@ def main() -> None:
         uploaded = st.file_uploader("上传图片", type=["jpg", "jpeg", "png", "bmp", "tif", "tiff"])
         draw_mode = st.radio("绘制模式", ["ROI 边界（黄色）", "毛发标注（红色）", "橡皮擦"], index=0)
         brush_size = st.slider("画笔粗细", min_value=3, max_value=36, value=10, step=1)
+        clear_marks = st.button("清空所有标记", use_container_width=True)
         use_auto_lesion = st.checkbox("未手动画 ROI 时自动识别皮损候选", value=True)
         repair_hair = st.checkbox("分析前修复红色毛发区域", value=True)
         run_analysis = st.button("开始分析", type="primary", use_container_width=True)
@@ -96,27 +97,31 @@ def main() -> None:
     _reset_analysis_when_upload_changes(uploaded)
     img = _read_uploaded_image(uploaded)
     display_img, scale = _make_display_image(img)
+    canvas_signature = _canvas_signature(uploaded, display_img)
+    _ensure_canvas_mark_state(canvas_signature, (display_img.height, display_img.width))
+    if clear_marks:
+        _reset_canvas_marks(canvas_signature, (display_img.height, display_img.width))
     stroke_color, drawing_mode = _canvas_style(draw_mode)
 
+    display_roi, display_hair = _current_display_masks()
+    canvas_background = _make_canvas_background(display_img, display_roi, display_hair)
     canvas_result = st_canvas(
         fill_color="rgba(0, 0, 0, 0)",
         stroke_width=brush_size,
         stroke_color=stroke_color,
-        background_image=display_img,
+        background_image=canvas_background,
         update_streamlit=True,
         height=display_img.height,
         width=display_img.width,
         drawing_mode=drawing_mode,
-        key=f"canvas_{uploaded.name}_{display_img.width}_{display_img.height}",
+        key=f"canvas_{uploaded.name}_{display_img.width}_{display_img.height}_{st.session_state.canvas_version}",
     )
 
-    roi_boundary, hair_mask = _extract_masks(
-        image_data=canvas_result.image_data,
-        json_data=canvas_result.json_data,
-        target_shape=img.shape[:2],
-        display_shape=(display_img.height, display_img.width),
-        scale=scale,
-    )
+    if _canvas_has_objects(canvas_result.json_data):
+        _merge_canvas_json_into_state(canvas_result.json_data, (display_img.height, display_img.width))
+        _rerun()
+
+    roi_boundary, hair_mask = _current_masks_for_analysis(img.shape[:2])
     roi_boundary, roi_source = _prepare_roi_boundary(img, roi_boundary, use_auto_lesion)
     if run_analysis:
         hair_mask, hair_source = _prepare_hair_mask_for_analysis(img, roi_boundary, hair_mask)
@@ -146,6 +151,10 @@ def _init_state() -> None:
     st.session_state.setdefault("records", [])
     st.session_state.setdefault("uploaded_signature", None)
     st.session_state.setdefault("roi_source", "unknown")
+    st.session_state.setdefault("canvas_signature", None)
+    st.session_state.setdefault("canvas_version", 0)
+    st.session_state.setdefault("canvas_roi_display", None)
+    st.session_state.setdefault("canvas_hair_display", None)
 
 
 def _reset_analysis_when_upload_changes(uploaded) -> None:
@@ -156,6 +165,10 @@ def _reset_analysis_when_upload_changes(uploaded) -> None:
         st.session_state.uploaded_signature = signature
         st.session_state.analysis = None
         st.session_state.roi_source = "unknown"
+        st.session_state.canvas_signature = None
+        st.session_state.canvas_version = 0
+        st.session_state.canvas_roi_display = None
+        st.session_state.canvas_hair_display = None
 
 
 def _read_uploaded_image(uploaded) -> np.ndarray:
@@ -177,6 +190,101 @@ def _make_display_image(img: np.ndarray) -> tuple[Image.Image, float]:
     if scale < 1:
         pil_img = pil_img.resize((display_w, display_h), Image.Resampling.LANCZOS)
     return pil_img, scale
+
+
+def _canvas_signature(uploaded, display_img: Image.Image) -> tuple[str, int, int, int]:
+    """生成当前上传图片和显示尺寸对应的画布状态签名。
+
+    画布标记是按显示尺寸保存的；当用户换图或显示尺寸变化时，旧标记不能继续复用，
+    否则会出现上一张图的 ROI 残留到新图上的问题。
+    """
+
+    return (uploaded.name, int(uploaded.size), int(display_img.width), int(display_img.height))
+
+
+def _ensure_canvas_mark_state(signature: tuple[str, int, int, int], display_shape: tuple[int, int]) -> None:
+    """确保 session 中存在当前图片的累计标记层。"""
+
+    needs_reset = (
+        st.session_state.canvas_signature != signature
+        or st.session_state.canvas_roi_display is None
+        or st.session_state.canvas_hair_display is None
+    )
+    if needs_reset:
+        _reset_canvas_marks(signature, display_shape)
+
+
+def _reset_canvas_marks(signature: tuple[str, int, int, int], display_shape: tuple[int, int]) -> None:
+    """清空当前图片的累计 ROI/毛发标记层。"""
+
+    display_h, display_w = display_shape
+    st.session_state.canvas_signature = signature
+    st.session_state.canvas_roi_display = np.zeros((display_h, display_w), dtype=bool)
+    st.session_state.canvas_hair_display = np.zeros((display_h, display_w), dtype=bool)
+    st.session_state.canvas_version = int(st.session_state.canvas_version) + 1
+
+
+def _current_display_masks() -> tuple[np.ndarray, np.ndarray]:
+    """读取当前显示尺寸下的累计标记层。"""
+
+    return (
+        np.asarray(st.session_state.canvas_roi_display).astype(bool),
+        np.asarray(st.session_state.canvas_hair_display).astype(bool),
+    )
+
+
+def _current_masks_for_analysis(target_shape: tuple[int, int]) -> tuple[np.ndarray, np.ndarray]:
+    """把累计标记层从显示尺寸映射回原图尺寸，供分析流程使用。"""
+
+    roi_display, hair_display = _current_display_masks()
+    return _resize_canvas_masks(roi_display, hair_display, target_shape)
+
+
+def _make_canvas_background(display_img: Image.Image, roi_mask: np.ndarray, hair_mask: np.ndarray) -> Image.Image:
+    """把当前累计标记合成到顶部画布背景图。
+
+    由于 `streamlit-drawable-canvas` 没有真正的局部橡皮擦，应用会把每次笔画先
+    合并进 session 中的二值标记层，再把合成后的标记预览作为下一轮画布背景。
+    这样用户擦除后，顶部大图也会立刻显示擦除后的黄色/红色标记，而原图像素不变。
+    """
+
+    base = np.asarray(display_img, dtype=np.uint8).copy()
+    roi = np.asarray(roi_mask).astype(bool)
+    hair = np.asarray(hair_mask).astype(bool)
+    if roi.shape == base.shape[:2]:
+        base[roi] = np.array([255, 220, 0], dtype=np.uint8)
+    if hair.shape == base.shape[:2]:
+        base[hair] = np.array([230, 45, 24], dtype=np.uint8)
+    return Image.fromarray(base, mode="RGB")
+
+
+def _canvas_has_objects(json_data: dict | None) -> bool:
+    """判断当前画布是否有尚未合并进累计层的新对象。"""
+
+    return bool((json_data or {}).get("objects"))
+
+
+def _merge_canvas_json_into_state(json_data: dict | None, display_shape: tuple[int, int]) -> None:
+    """把本轮画布新路径合并到累计标记层，并推进画布版本。
+
+    画布本身只作为“本次笔画采集器”。合并完成后通过递增 key 清空临时对象，
+    下一轮画布背景会显示已经合成好的标记结果，因此橡皮擦的视觉效果会同步到
+    顶部大图。
+    """
+
+    roi_display, hair_display = _current_display_masks()
+    roi_display, hair_display = _apply_canvas_json_to_masks(json_data, display_shape, roi_display, hair_display)
+    st.session_state.canvas_roi_display = roi_display
+    st.session_state.canvas_hair_display = hair_display
+    st.session_state.analysis = None
+    st.session_state.canvas_version = int(st.session_state.canvas_version) + 1
+
+
+def _rerun() -> None:
+    """兼容不同 Streamlit 版本的 rerun 入口。"""
+
+    rerun = getattr(st, "rerun", None) or getattr(st, "experimental_rerun")
+    rerun()
 
 
 def _canvas_style(draw_mode: str) -> tuple[str, str]:
@@ -243,8 +351,37 @@ def _masks_from_canvas_json(json_data: dict | None, display_shape: tuple[int, in
     """
 
     display_h, display_w = display_shape
-    roi_img = Image.new("L", (display_w, display_h), 0)
-    hair_img = Image.new("L", (display_w, display_h), 0)
+    roi = np.zeros((display_h, display_w), dtype=bool)
+    hair = np.zeros((display_h, display_w), dtype=bool)
+    return _apply_canvas_json_to_masks(json_data, display_shape, roi, hair)
+
+
+def _apply_canvas_json_to_masks(
+    json_data: dict | None,
+    display_shape: tuple[int, int],
+    roi_mask: np.ndarray,
+    hair_mask: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """按 Fabric.js 对象顺序把画笔路径应用到给定 ROI/毛发 mask。
+
+    该函数同时服务两种场景：
+    - 测试和旧逻辑：从空白 mask 重建整张画布的标记。
+    - 当前交互：把本轮新画的路径叠加到 session 中的累计标记层。
+
+    橡皮擦必须按对象顺序处理，因为用户可能先画黄色 ROI，再擦掉局部，随后又
+    补画一段黄色边界；顺序错了会让最终显示和用户操作不一致。
+    """
+
+    display_h, display_w = display_shape
+    roi_arr = np.asarray(roi_mask).astype(bool)
+    hair_arr = np.asarray(hair_mask).astype(bool)
+    if roi_arr.shape != (display_h, display_w):
+        roi_arr = np.zeros((display_h, display_w), dtype=bool)
+    if hair_arr.shape != (display_h, display_w):
+        hair_arr = np.zeros((display_h, display_w), dtype=bool)
+
+    roi_img = Image.fromarray((roi_arr.astype(np.uint8) * 255), mode="L")
+    hair_img = Image.fromarray((hair_arr.astype(np.uint8) * 255), mode="L")
     roi_draw = ImageDraw.Draw(roi_img)
     hair_draw = ImageDraw.Draw(hair_img)
 

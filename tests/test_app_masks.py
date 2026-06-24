@@ -1,6 +1,6 @@
 import numpy as np
 
-from app import _extract_masks
+from app import _apply_canvas_json_to_masks, _extract_masks
 from colorroi_analyzer.core import fill_roi_from_boundary
 
 
@@ -122,3 +122,30 @@ def test_extract_masks_treats_transparent_white_paths_as_eraser():
     assert roi_boundary[40, 35]
     assert roi_boundary[40, 120]
     assert not hair_mask.any()
+
+
+def test_apply_canvas_json_erases_existing_display_mask():
+    roi_mask = np.zeros((100, 160), dtype=bool)
+    hair_mask = np.zeros((100, 160), dtype=bool)
+    roi_mask[38:43, 20:141] = True
+    hair_mask[68:73, 20:141] = True
+    json_data = {
+        "objects": [
+            {
+                "type": "path",
+                "stroke": "rgba(255,255,255,0)",
+                "strokeWidth": 16,
+                "path": [["M", 78, 20], ["L", 78, 90]],
+            }
+        ]
+    }
+
+    next_roi, next_hair = _apply_canvas_json_to_masks(json_data, (100, 160), roi_mask, hair_mask)
+
+    # 累计标记层中的已有 ROI/毛发都应被局部擦除，左右两侧仍保留。
+    assert not next_roi[40, 78]
+    assert not next_hair[70, 78]
+    assert next_roi[40, 35]
+    assert next_roi[40, 120]
+    assert next_hair[70, 35]
+    assert next_hair[70, 120]

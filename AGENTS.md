@@ -70,6 +70,7 @@
 - 已用 Git 同步模板重建 AWS 公网测试实例：新实例 `i-035e3e54eeef40e32` 从 GitHub clone 代码并启用 `colorroi-git-sync.timer`，地址 `http://95.40.6.145/` 返回 200；旧 zip 部署实例 `i-017b0027602f81aed` 已发起终止，S3 部署包和 bucket 已删除，安全组已移除 `8501` 入站规则，仅保留 `80/tcp`。
 - 修复橡皮擦交互：将“橡皮擦”从 `transform` 模式改为 `freedraw` 白色笔刷，解析 Fabric.js JSON 时识别白色擦除路径并按顺序从黄色 ROI 和红色毛发 mask 中局部扣除；新增 `test_extract_masks_applies_eraser_paths_in_draw_order` 覆盖擦除逻辑，当前 pytest 8 项通过。
 - 调整橡皮擦显示方式为透明白色笔刷，避免在画布上覆盖原图像素；后端仍按透明白色路径作为擦除操作处理，并新增透明白色擦除回归测试，当前 pytest 9 项通过。
+- 本地修复顶部大图擦除后不变化的问题：新增累计标记层，画布仅采集本轮笔画，合并后以标记预览图作为下一轮画布背景，使橡皮擦后的黄色/红色标记在顶部大图同步变化；当前修改仅本地 commit，暂不 push，等待用户通知后再同步 AWS。
 
 ## Next TODO
 
