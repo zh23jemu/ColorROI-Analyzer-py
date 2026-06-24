@@ -103,6 +103,12 @@ def main() -> None:
         _reset_canvas_marks(canvas_signature, (display_img.height, display_img.width))
     stroke_color, drawing_mode = _canvas_style(draw_mode)
 
+    canvas_key = _canvas_key(uploaded, display_img)
+    pending_json = _pending_canvas_json(canvas_key)
+    if _canvas_has_objects(pending_json):
+        _merge_canvas_json_into_state(pending_json, (display_img.height, display_img.width))
+        canvas_key = _canvas_key(uploaded, display_img)
+
     display_roi, display_hair = _current_display_masks()
     canvas_background = _make_canvas_background(display_img, display_roi, display_hair)
     canvas_result = st_canvas(
@@ -114,12 +120,11 @@ def main() -> None:
         height=display_img.height,
         width=display_img.width,
         drawing_mode=drawing_mode,
-        key=f"canvas_{uploaded.name}_{display_img.width}_{display_img.height}_{st.session_state.canvas_version}",
+        key=canvas_key,
     )
 
     if _canvas_has_objects(canvas_result.json_data):
         _merge_canvas_json_into_state(canvas_result.json_data, (display_img.height, display_img.width))
-        _rerun()
 
     roi_boundary, hair_mask = _current_masks_for_analysis(img.shape[:2])
     roi_boundary, roi_source = _prepare_roi_boundary(img, roi_boundary, use_auto_lesion)
@@ -224,6 +229,34 @@ def _reset_canvas_marks(signature: tuple[str, int, int, int], display_shape: tup
     st.session_state.canvas_version = int(st.session_state.canvas_version) + 1
 
 
+def _canvas_key(uploaded, display_img: Image.Image) -> str:
+    """生成当前画布组件 key。
+
+    key 中包含 `canvas_version`，用于在合并完一轮笔画后清空组件临时矢量对象。
+    这样顶部大图显示的是我们重绘后的累计标记层，而不是 Fabric.js 残留对象。
+    """
+
+    return f"canvas_{uploaded.name}_{display_img.width}_{display_img.height}_{st.session_state.canvas_version}"
+
+
+def _pending_canvas_json(canvas_key: str) -> dict | None:
+    """读取上一次画布组件回传、但尚未合并的 JSON。
+
+    Streamlit 组件触发 rerun 时，组件值通常已经进入 `session_state`。先读取它，
+    再渲染画布，可以在同一次 rerun 内完成“合并标记层 -> 清空临时对象 ->
+    显示更新后的顶部大图”，避免额外调用 `st.rerun()` 造成明显二次刷新。
+    """
+
+    value = st.session_state.get(canvas_key)
+    if value is None:
+        return None
+    if isinstance(value, dict):
+        json_data = value.get("json_data")
+        return json_data if isinstance(json_data, dict) else None
+    json_data = getattr(value, "json_data", None)
+    return json_data if isinstance(json_data, dict) else None
+
+
 def _current_display_masks() -> tuple[np.ndarray, np.ndarray]:
     """读取当前显示尺寸下的累计标记层。"""
 
@@ -278,13 +311,6 @@ def _merge_canvas_json_into_state(json_data: dict | None, display_shape: tuple[i
     st.session_state.canvas_hair_display = hair_display
     st.session_state.analysis = None
     st.session_state.canvas_version = int(st.session_state.canvas_version) + 1
-
-
-def _rerun() -> None:
-    """兼容不同 Streamlit 版本的 rerun 入口。"""
-
-    rerun = getattr(st, "rerun", None) or getattr(st, "experimental_rerun")
-    rerun()
 
 
 def _canvas_style(draw_mode: str) -> tuple[str, str]:
