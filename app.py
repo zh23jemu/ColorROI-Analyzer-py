@@ -76,6 +76,7 @@ def main() -> None:
         draw_mode = st.radio("绘制模式", ["ROI 边界（黄色）", "毛发标注（红色）", "橡皮擦"], index=0)
         brush_size = st.slider("画笔粗细", min_value=3, max_value=36, value=10, step=1)
         clear_marks = st.button("清空所有标记", use_container_width=True)
+        st.caption("画完或擦完后，点击画布左下角第一个图标应用标记。")
         use_auto_lesion = st.checkbox("未手动画 ROI 时自动识别皮损候选", value=True)
         repair_hair = st.checkbox("分析前修复红色毛发区域", value=True)
         run_analysis = st.button("开始分析", type="primary", use_container_width=True)
@@ -116,7 +117,7 @@ def main() -> None:
         stroke_width=brush_size,
         stroke_color=stroke_color,
         background_image=canvas_background,
-        update_streamlit=True,
+        update_streamlit=False,
         height=display_img.height,
         width=display_img.width,
         drawing_mode=drawing_mode,
