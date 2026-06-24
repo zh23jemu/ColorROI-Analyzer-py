@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ColorROI Canvas</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        background: transparent;
+        font-family: sans-serif;
+      }
+
+      .canvas-wrap {
+        position: relative;
+        display: inline-block;
+        max-width: 100%;
+        line-height: 0;
+        user-select: none;
+        touch-action: none;
+      }
+
+      canvas {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+      }
+
+      #baseCanvas {
+        position: static;
+        display: block;
+      }
+
+      #drawCanvas {
+        cursor: crosshair;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="wrap" class="canvas-wrap">
+      <canvas id="baseCanvas"></canvas>
+      <canvas id="drawCanvas"></canvas>
+      <canvas id="roiMaskCanvas" hidden></canvas>
+      <canvas id="hairMaskCanvas" hidden></canvas>
+    </div>
+
+    <script>
+      // 轻量实现 Streamlit component 通信协议，避免为一个画布组件引入 npm 构建链。
+      const Streamlit = {
+        ready() {
+          window.parent.postMessage(
+            { isStreamlitMessage: true, type: "streamlit:componentReady", apiVersion: 1 },
+            "*"
+          );
+        },
+        setFrameHeight(height) {
+          window.parent.postMessage(
+            { isStreamlitMessage: true, type: "streamlit:setFrameHeight", height },
+            "*"
+          );
+        },
+        setComponentValue(value) {
+          window.parent.postMessage(
+            { isStreamlitMessage: true, type: "streamlit:setComponentValue", value, dataType: "json" },
+            "*"
+          );
+        },
+      };
+
+      const wrap = document.getElementById("wrap");
+      const baseCanvas = document.getElementById("baseCanvas");
+      const drawCanvas = document.getElementById("drawCanvas");
+      const roiMaskCanvas = document.getElementById("roiMaskCanvas");
+      const hairMaskCanvas = document.getElementById("hairMaskCanvas");
+      const baseCtx = baseCanvas.getContext("2d");
+      const drawCtx = drawCanvas.getContext("2d");
+      const roiMaskCtx = roiMaskCanvas.getContext("2d");
+      const hairMaskCtx = hairMaskCanvas.getContext("2d");
+
+      let args = {};
+      let isDrawing = false;
+      let lastPoint = null;
+      let currentSignature = "";
+      let pendingEmit = null;
+
+      function resizeCanvas(canvas, width, height) {
+        canvas.width = width;
+        canvas.height = height;
+      }
+
+      function setupSize(width, height) {
+        for (const canvas of [baseCanvas, drawCanvas, roiMaskCanvas, hairMaskCanvas]) {
+          resizeCanvas(canvas, width, height);
+        }
+        wrap.style.width = `${width}px`;
+        wrap.style.height = `${height}px`;
+        Streamlit.setFrameHeight(height);
+      }
+
+      function loadImage(src) {
+        return new Promise((resolve, reject) => {
+          const img = new Image();
+          img.onload = () => resolve(img);
+          img.onerror = reject;
+          img.src = src || "";
+        });
+      }
+
+      async function renderFromArgs(nextArgs) {
+        args = nextArgs || {};
+        const width = Number(args.width || 600);
+        const height = Number(args.height || 400);
+        const signature = [
+          args.imageDataUrl || "",
+          args.roiMaskDataUrl || "",
+          args.hairMaskDataUrl || "",
+          width,
+          height,
+        ].join("|");
+
+        // 只有图片或后端 mask 真的变化时才重绘；切换工具和画笔粗细不清空当前前端图层。
+        if (signature === currentSignature) {
+          Streamlit.setFrameHeight(height);
+          return;
+        }
+        currentSignature = signature;
+        setupSize(width, height);
+        baseCtx.clearRect(0, 0, width, height);
+        drawCtx.clearRect(0, 0, width, height);
+        roiMaskCtx.clearRect(0, 0, width, height);
+        hairMaskCtx.clearRect(0, 0, width, height);
+
+        try {
+          const baseImage = await loadImage(args.imageDataUrl);
+          baseCtx.drawImage(baseImage, 0, 0, width, height);
+        } catch (_) {
+          baseCtx.fillStyle = "#f5f5f5";
+          baseCtx.fillRect(0, 0, width, height);
+        }
+
+        await drawMaskLayer(args.roiMaskDataUrl, roiMaskCtx, "rgba(255,220,0,1)", width, height);
+        await drawMaskLayer(args.hairMaskDataUrl, hairMaskCtx, "rgba(230,45,24,1)", width, height);
+      }
+
+      async function drawMaskLayer(maskUrl, maskCtx, visibleColor, width, height) {
+        if (!maskUrl) {
+          return;
+        }
+        try {
+          const maskImage = await loadImage(maskUrl);
+          maskCtx.drawImage(maskImage, 0, 0, width, height);
+          drawCtx.save();
+          drawCtx.globalCompositeOperation = "source-over";
+          drawCtx.fillStyle = visibleColor;
+          drawCtx.globalAlpha = 1;
+          drawCtx.drawImage(tintMask(maskImage, visibleColor, width, height), 0, 0);
+          drawCtx.restore();
+        } catch (_) {
+          // mask 加载失败时保持空标记层，避免影响原图显示。
+        }
+      }
+
+      function tintMask(maskImage, color, width, height) {
+        const temp = document.createElement("canvas");
+        temp.width = width;
+        temp.height = height;
+        const tempCtx = temp.getContext("2d");
+        tempCtx.drawImage(maskImage, 0, 0, width, height);
+        tempCtx.globalCompositeOperation = "source-in";
+        tempCtx.fillStyle = color;
+        tempCtx.fillRect(0, 0, width, height);
+        return temp;
+      }
+
+      function pointerPoint(event) {
+        const rect = drawCanvas.getBoundingClientRect();
+        return {
+          x: ((event.clientX - rect.left) / rect.width) * drawCanvas.width,
+          y: ((event.clientY - rect.top) / rect.height) * drawCanvas.height,
+        };
+      }
+
+      function prepareStroke(ctx, mode) {
+        ctx.lineWidth = Number(args.brushSize || 10);
+        ctx.lineCap = "round";
+        ctx.lineJoin = "round";
+        ctx.globalAlpha = 1;
+        if (mode === "eraser") {
+          ctx.globalCompositeOperation = "destination-out";
+          ctx.strokeStyle = "rgba(0,0,0,1)";
+        } else {
+          ctx.globalCompositeOperation = "source-over";
+          ctx.strokeStyle = mode === "hair" ? "rgba(230,45,24,1)" : "rgba(255,220,0,1)";
+        }
+      }
+
+      function strokeSegment(ctx, fromPoint, toPoint, mode) {
+        ctx.save();
+        prepareStroke(ctx, mode);
+        ctx.beginPath();
+        ctx.moveTo(fromPoint.x, fromPoint.y);
+        ctx.lineTo(toPoint.x, toPoint.y);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      function strokeMasks(fromPoint, toPoint, mode) {
+        if (mode === "eraser") {
+          strokeSegment(roiMaskCtx, fromPoint, toPoint, "eraser");
+          strokeSegment(hairMaskCtx, fromPoint, toPoint, "eraser");
+          return;
+        }
+        const targetCtx = mode === "hair" ? hairMaskCtx : roiMaskCtx;
+        targetCtx.save();
+        targetCtx.lineWidth = Number(args.brushSize || 10);
+        targetCtx.lineCap = "round";
+        targetCtx.lineJoin = "round";
+        targetCtx.globalCompositeOperation = "source-over";
+        targetCtx.strokeStyle = "rgba(255,255,255,1)";
+        targetCtx.beginPath();
+        targetCtx.moveTo(fromPoint.x, fromPoint.y);
+        targetCtx.lineTo(toPoint.x, toPoint.y);
+        targetCtx.stroke();
+        targetCtx.restore();
+      }
+
+      function emitMasks() {
+        window.clearTimeout(pendingEmit);
+        pendingEmit = window.setTimeout(() => {
+          Streamlit.setComponentValue({
+            roiMaskDataUrl: roiMaskCanvas.toDataURL("image/png"),
+            hairMaskDataUrl: hairMaskCanvas.toDataURL("image/png"),
+          });
+        }, 30);
+      }
+
+      function startDrawing(event) {
+        event.preventDefault();
+        isDrawing = true;
+        lastPoint = pointerPoint(event);
+        drawCanvas.setPointerCapture(event.pointerId);
+      }
+
+      function continueDrawing(event) {
+        if (!isDrawing || !lastPoint) {
+          return;
+        }
+        event.preventDefault();
+        const mode = args.mode || "roi";
+        const nextPoint = pointerPoint(event);
+        strokeSegment(drawCtx, lastPoint, nextPoint, mode);
+        strokeMasks(lastPoint, nextPoint, mode);
+        lastPoint = nextPoint;
+      }
+
+      function finishDrawing(event) {
+        if (!isDrawing) {
+          return;
+        }
+        event.preventDefault();
+        isDrawing = false;
+        lastPoint = null;
+        emitMasks();
+      }
+
+      drawCanvas.addEventListener("pointerdown", startDrawing);
+      drawCanvas.addEventListener("pointermove", continueDrawing);
+      drawCanvas.addEventListener("pointerup", finishDrawing);
+      drawCanvas.addEventListener("pointercancel", finishDrawing);
+      drawCanvas.addEventListener("pointerleave", finishDrawing);
+
+      window.addEventListener("message", (event) => {
+        const data = event.data || {};
+        if (data.type !== "streamlit:render") {
+          return;
+        }
+        renderFromArgs(data.args || {});
+      });
+
+      Streamlit.ready();
+    </script>
+  </body>
+</html>

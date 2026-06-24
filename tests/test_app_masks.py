@@ -1,6 +1,6 @@
 import numpy as np
 
-from app import _apply_canvas_json_to_masks, _extract_masks
+from app import _apply_canvas_json_to_masks, _extract_masks, _mask_from_data_url, _mask_to_data_url
 from colorroi_analyzer.core import fill_roi_from_boundary
 
 
@@ -149,3 +149,14 @@ def test_apply_canvas_json_erases_existing_display_mask():
     assert next_roi[40, 120]
     assert next_hair[70, 35]
     assert next_hair[70, 120]
+
+
+def test_mask_data_url_roundtrip_preserves_alpha():
+    mask = np.zeros((24, 32), dtype=bool)
+    mask[5:12, 8:20] = True
+
+    data_url = _mask_to_data_url(mask)
+    decoded = _mask_from_data_url(data_url, mask.shape)
+
+    assert decoded is not None
+    assert np.array_equal(decoded, mask)

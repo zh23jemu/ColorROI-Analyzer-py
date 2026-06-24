@@ -10,6 +10,7 @@ from __future__ import annotations
 import io
 import importlib
 import sys
+import base64
 from datetime import datetime
 from pathlib import Path
 
@@ -17,44 +18,17 @@ import numpy as np
 import pandas as pd
 import plotly.express as px
 import streamlit as st
+import streamlit.components.v1 as components
 from PIL import Image
 from PIL import ImageDraw
 
-
-def _patch_streamlit_canvas_image_api() -> None:
-    """为 streamlit-drawable-canvas 补齐新版 Streamlit 中移动过的图片 API。
-
-    `streamlit-drawable-canvas==0.9.3` 仍会从 `streamlit.elements.image`
-    调用旧签名的内部函数 `image_to_url(image, width, clamp, channels,
-    output_format, image_id)`。Streamlit 1.58 已把该函数移动到
-    `streamlit.elements.lib.image_utils`，并把第二个参数改为 `LayoutConfig`。
-    这里在导入 `st_canvas` 之前提供一个兼容旧签名的包装器，只影响当前进程，
-    不修改第三方包源码。
-    """
-
-    try:
-        import streamlit.elements.image as legacy_image
-        from streamlit.elements.lib.image_utils import image_to_url as modern_image_to_url
-        from streamlit.elements.lib.layout_utils import LayoutConfig
-    except Exception:
-        return
-
-    def legacy_image_to_url(image, width, clamp, channels, output_format, image_id):
-        # 旧画布组件传入的是整数宽度；新版 Streamlit 需要带 width 属性的
-        # LayoutConfig。其它参数保持原样透传，避免改变图片编码和缓存 ID。
-        layout_config = width if isinstance(width, LayoutConfig) else LayoutConfig(width=width)
-        return modern_image_to_url(image, layout_config, clamp, channels, output_format, image_id)
-
-    legacy_image.image_to_url = legacy_image_to_url
-
-
-_patch_streamlit_canvas_image_api()
-from streamlit_drawable_canvas import st_canvas
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 SRC_DIR = PROJECT_ROOT / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
+CANVAS_COMPONENT_DIR = PROJECT_ROOT / "components" / "colorroi_canvas"
+colorroi_canvas_component = components.declare_component("colorroi_canvas", path=str(CANVAS_COMPONENT_DIR))
 
 import colorroi_analyzer.core as colorroi_core
 import colorroi_analyzer.analysis as colorroi_analysis
@@ -101,30 +75,17 @@ def main() -> None:
     _ensure_canvas_mark_state(canvas_signature, (display_img.height, display_img.width))
     if clear_marks:
         _reset_canvas_marks(canvas_signature, (display_img.height, display_img.width))
-    stroke_color, drawing_mode = _canvas_style(draw_mode)
-
     canvas_key = _canvas_key(uploaded, display_img)
-    pending_json = _pending_canvas_json(canvas_key)
-    if _canvas_has_objects(pending_json):
-        _merge_canvas_json_into_state(pending_json, (display_img.height, display_img.width))
-        canvas_key = _canvas_key(uploaded, display_img)
-
     display_roi, display_hair = _current_display_masks()
-    canvas_background = _make_canvas_background(display_img, display_roi, display_hair)
-    canvas_result = st_canvas(
-        fill_color="rgba(0, 0, 0, 0)",
-        stroke_width=brush_size,
-        stroke_color=stroke_color,
-        background_image=canvas_background,
-        update_streamlit=True,
-        height=display_img.height,
-        width=display_img.width,
-        drawing_mode=drawing_mode,
+    canvas_value = _render_annotation_canvas(
+        display_img=display_img,
+        roi_mask=display_roi,
+        hair_mask=display_hair,
+        draw_mode=draw_mode,
+        brush_size=brush_size,
         key=canvas_key,
     )
-
-    if _canvas_has_objects(canvas_result.json_data):
-        _merge_canvas_json_into_state(canvas_result.json_data, (display_img.height, display_img.width))
+    _merge_component_value_into_state(canvas_value, (display_img.height, display_img.width))
 
     roi_boundary, hair_mask = _current_masks_for_analysis(img.shape[:2])
     roi_boundary, roi_source = _prepare_roi_boundary(img, roi_boundary, use_auto_lesion)
@@ -232,8 +193,9 @@ def _reset_canvas_marks(signature: tuple[str, int, int, int], display_shape: tup
 def _canvas_key(uploaded, display_img: Image.Image) -> str:
     """生成当前画布组件 key。
 
-    key 中包含 `canvas_version`，用于在合并完一轮笔画后清空组件临时矢量对象。
-    这样顶部大图显示的是我们重绘后的累计标记层，而不是 Fabric.js 残留对象。
+    key 中包含 `canvas_version`，用于在清空标记或切换图片时重建前端组件，避免
+    浏览器继续沿用上一张图片的隐藏 mask。普通绘制不会改变 key，保证前端画布
+    能持续处理笔画和橡皮擦，减少 Streamlit rerun 带来的视觉中断。
     """
 
     return f"canvas_{uploaded.name}_{display_img.width}_{display_img.height}_{st.session_state.canvas_version}"
@@ -271,6 +233,122 @@ def _current_masks_for_analysis(target_shape: tuple[int, int]) -> tuple[np.ndarr
 
     roi_display, hair_display = _current_display_masks()
     return _resize_canvas_masks(roi_display, hair_display, target_shape)
+
+
+def _render_annotation_canvas(
+    display_img: Image.Image,
+    roi_mask: np.ndarray,
+    hair_mask: np.ndarray,
+    draw_mode: str,
+    brush_size: int,
+    key: str,
+) -> dict | None:
+    """渲染本地自定义标注画布，并返回前端回传的二值 mask。
+
+    这个组件用浏览器里的多层 canvas 取代 `streamlit-drawable-canvas`：
+    - 底层只显示原图，不参与擦除。
+    - 可见标记层显示黄色 ROI 和红色毛发。
+    - 两个隐藏 mask 层分别保存 ROI 与毛发二值结果。
+
+    橡皮擦在前端使用 canvas 的 `destination-out` 合成模式，只擦除标记层和隐藏
+    mask 层，不会覆盖或修改原图像素，因此拖动橡皮擦时能立即看到黄色/红色标记
+    被擦掉。
+    """
+
+    return colorroi_canvas_component(
+        imageDataUrl=_image_to_data_url(display_img),
+        roiMaskDataUrl=_mask_to_data_url(roi_mask),
+        hairMaskDataUrl=_mask_to_data_url(hair_mask),
+        width=int(display_img.width),
+        height=int(display_img.height),
+        mode=_canvas_component_mode(draw_mode),
+        brushSize=int(brush_size),
+        key=key,
+        default=None,
+    )
+
+
+def _merge_component_value_into_state(value: dict | None, display_shape: tuple[int, int]) -> None:
+    """把自定义前端画布回传的 mask 合并到 Streamlit session。
+
+    前端每次完成一笔都会回传完整 ROI/毛发 mask。Python 端只保存二值层，后续
+    分析、自动 ROI 优先级判断和导出都继续沿用原来的 mask 流程。
+    """
+
+    if not isinstance(value, dict):
+        return
+    roi_mask = _mask_from_data_url(value.get("roiMaskDataUrl"), display_shape)
+    hair_mask = _mask_from_data_url(value.get("hairMaskDataUrl"), display_shape)
+    if roi_mask is None or hair_mask is None:
+        return
+
+    current_roi, current_hair = _current_display_masks()
+    if np.array_equal(current_roi, roi_mask) and np.array_equal(current_hair, hair_mask):
+        return
+
+    st.session_state.canvas_roi_display = roi_mask
+    st.session_state.canvas_hair_display = hair_mask
+    st.session_state.analysis = None
+
+
+def _canvas_component_mode(draw_mode: str) -> str:
+    """把界面中文模式转换为前端组件使用的短模式名。"""
+
+    if draw_mode == "毛发标注（红色）":
+        return "hair"
+    if draw_mode == "橡皮擦":
+        return "eraser"
+    return "roi"
+
+
+def _image_to_data_url(image: Image.Image) -> str:
+    """把显示图编码成前端组件可直接加载的 PNG data URL。"""
+
+    return _pil_to_png_data_url(image.convert("RGB"))
+
+
+def _pil_to_png_data_url(image: Image.Image) -> str:
+    """把 PIL 图片原样编码为 PNG data URL。
+
+    普通背景图使用 RGB 即可；mask 图必须保留 RGBA 的 alpha 通道，所以这里单独
+    提供不强制转 RGB 的底层编码函数。
+    """
+
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG")
+    encoded = base64.b64encode(buffer.getvalue()).decode("ascii")
+    return f"data:image/png;base64,{encoded}"
+
+
+def _mask_to_data_url(mask: np.ndarray) -> str:
+    """把布尔 mask 编码为透明背景、白色前景的 PNG data URL。"""
+
+    mask_arr = np.asarray(mask).astype(bool)
+    rgba = np.zeros((*mask_arr.shape, 4), dtype=np.uint8)
+    rgba[mask_arr] = np.array([255, 255, 255, 255], dtype=np.uint8)
+    return _pil_to_png_data_url(Image.fromarray(rgba, mode="RGBA"))
+
+
+def _mask_from_data_url(data_url: str | None, expected_shape: tuple[int, int]) -> np.ndarray | None:
+    """从前端回传的 PNG data URL 读取二值 mask。
+
+    前端隐藏 mask 层只使用 alpha 通道表示是否被标记；读取时也只看 alpha，避免
+    受到浏览器抗锯齿产生的 RGB 差异影响。
+    """
+
+    if not isinstance(data_url, str) or ";base64," not in data_url:
+        return None
+    try:
+        encoded = data_url.split(";base64,", 1)[1]
+        image = Image.open(io.BytesIO(base64.b64decode(encoded))).convert("RGBA")
+    except Exception:
+        return None
+
+    expected_h, expected_w = expected_shape
+    if image.size != (expected_w, expected_h):
+        image = image.resize((expected_w, expected_h), Image.Resampling.NEAREST)
+    alpha = np.asarray(image, dtype=np.uint8)[..., 3]
+    return alpha > 0
 
 
 def _make_canvas_background(display_img: Image.Image, roi_mask: np.ndarray, hair_mask: np.ndarray) -> Image.Image:

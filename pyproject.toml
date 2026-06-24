@@ -13,7 +13,6 @@ dependencies = [
   "scikit-learn>=1.5",
   "scipy>=1.13",
   "streamlit>=1.35,<1.40",
-  "streamlit-drawable-canvas>=0.9.3",
 ]
 
 [project.optional-dependencies]
