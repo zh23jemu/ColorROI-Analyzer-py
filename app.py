@@ -185,7 +185,10 @@ def _canvas_style(draw_mode: str) -> tuple[str, str]:
     if draw_mode == "毛发标注（红色）":
         return "rgba(230,45,24,1)", "freedraw"
     if draw_mode == "橡皮擦":
-        return "rgba(255,255,255,1)", "freedraw"
+        # 使用透明白色作为“局部橡皮擦”笔刷：Fabric.js 仍会记录这条 path，
+        # 后端解析 JSON 时可据此擦除黄色/红色标记；但画布上不会出现白色痕迹，
+        # 避免用户误以为原始图片内容被擦掉。
+        return "rgba(255,255,255,0)", "freedraw"
     return "rgba(255,220,0,1)", "freedraw"
 
 

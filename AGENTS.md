@@ -69,6 +69,7 @@
 - 已创建 GitHub public repo `https://github.com/zh23jemu/ColorROI-Analyzer-py`，本地 `master` 分支跟踪 `origin/master`；新增 `deploy/aws-git-sync-user-data.sh` 模板，用于让 AWS EC2 从 GitHub clone 项目并通过 systemd timer 定期执行 `git pull --ff-only` 同步代码。
 - 已用 Git 同步模板重建 AWS 公网测试实例：新实例 `i-035e3e54eeef40e32` 从 GitHub clone 代码并启用 `colorroi-git-sync.timer`，地址 `http://95.40.6.145/` 返回 200；旧 zip 部署实例 `i-017b0027602f81aed` 已发起终止，S3 部署包和 bucket 已删除，安全组已移除 `8501` 入站规则，仅保留 `80/tcp`。
 - 修复橡皮擦交互：将“橡皮擦”从 `transform` 模式改为 `freedraw` 白色笔刷，解析 Fabric.js JSON 时识别白色擦除路径并按顺序从黄色 ROI 和红色毛发 mask 中局部扣除；新增 `test_extract_masks_applies_eraser_paths_in_draw_order` 覆盖擦除逻辑，当前 pytest 8 项通过。
+- 调整橡皮擦显示方式为透明白色笔刷，避免在画布上覆盖原图像素；后端仍按透明白色路径作为擦除操作处理，并新增透明白色擦除回归测试，当前 pytest 9 项通过。
 
 ## Next TODO
 

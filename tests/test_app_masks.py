@@ -89,3 +89,36 @@ def test_extract_masks_applies_eraser_paths_in_draw_order():
     assert roi_boundary[40, 120]
     assert hair_mask[70, 35]
     assert hair_mask[70, 120]
+
+
+def test_extract_masks_treats_transparent_white_paths_as_eraser():
+    json_data = {
+        "objects": [
+            {
+                "type": "path",
+                "stroke": "rgba(255,220,0,1)",
+                "strokeWidth": 10,
+                "path": [["M", 20, 40], ["L", 140, 40]],
+            },
+            {
+                "type": "path",
+                "stroke": "rgba(255,255,255,0)",
+                "strokeWidth": 16,
+                "path": [["M", 78, 20], ["L", 78, 90]],
+            },
+        ]
+    }
+
+    roi_boundary, hair_mask = _extract_masks(
+        image_data=np.zeros((100, 160, 4), dtype=np.uint8),
+        json_data=json_data,
+        target_shape=(100, 160),
+        display_shape=(100, 160),
+        scale=1.0,
+    )
+
+    # 透明白色路径在画布上不可见，但仍应作为橡皮擦擦除已有标记。
+    assert not roi_boundary[40, 78]
+    assert roi_boundary[40, 35]
+    assert roi_boundary[40, 120]
+    assert not hair_mask.any()
