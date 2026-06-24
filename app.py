@@ -185,7 +185,7 @@ def _canvas_style(draw_mode: str) -> tuple[str, str]:
     if draw_mode == "毛发标注（红色）":
         return "rgba(230,45,24,1)", "freedraw"
     if draw_mode == "橡皮擦":
-        return "rgba(0,0,0,1)", "transform"
+        return "rgba(255,255,255,1)", "freedraw"
     return "rgba(255,220,0,1)", "freedraw"
 
 
@@ -252,7 +252,13 @@ def _masks_from_canvas_json(json_data: dict | None, display_shape: tuple[int, in
 
         stroke_width = max(1, int(round(float(obj.get("strokeWidth") or 1))))
         stroke = str(obj.get("stroke") or "")
-        if _is_roi_stroke(stroke):
+        if _is_eraser_stroke(stroke):
+            # `streamlit-drawable-canvas` 没有真正的局部橡皮擦模式；这里把白色
+            # 自由笔画解释为擦除路径，并按用户绘制顺序同时从 ROI 和毛发 mask 中
+            # 扣掉对应区域。这样用户不需要整对象删除，也能修正局部误画。
+            roi_draw.line(points, fill=0, width=stroke_width, joint="curve")
+            hair_draw.line(points, fill=0, width=stroke_width, joint="curve")
+        elif _is_roi_stroke(stroke):
             roi_draw.line(points, fill=255, width=stroke_width, joint="curve")
         elif _is_hair_stroke(stroke):
             hair_draw.line(points, fill=255, width=stroke_width, joint="curve")
@@ -362,6 +368,20 @@ def _is_hair_stroke(stroke: str) -> bool:
         return False
     red, green, blue = rgb
     return red > 160 and green < 120 and blue < 120
+
+
+def _is_eraser_stroke(stroke: str) -> bool:
+    """判断画笔颜色是否为局部橡皮擦。
+
+    画布组件无法直接输出“擦除”语义，所以界面把橡皮擦做成白色自由笔画。
+    解析 JSON 时将接近白色的路径视为擦除操作，而不是新的 ROI 或毛发标注。
+    """
+
+    rgb = _parse_rgb(stroke)
+    if rgb is None:
+        return False
+    red, green, blue = rgb
+    return red > 230 and green > 230 and blue > 230
 
 
 def _parse_rgb(stroke: str) -> tuple[int, int, int] | None:
