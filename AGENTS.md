@@ -66,6 +66,7 @@
 - 用户反馈收紧版自动皮损候选效果不如上一版，已回退 `fix: 收紧自动皮损候选范围` 的算法和报告结果，恢复较宽松的上一版自动 ROI 候选。
 - 在 AWS `ap-east-1` 创建公网测试部署：使用已有 VPC 子网 `subnet-03781c1b2a13b3e3d`，安全组 `sg-06d20438196dca6f6` 开放 TCP `80` 和 `8501`。由于用户浏览器访问 `8501` 超时，改为 `t3.small` 实例 `i-0a23b365d8517d699` 直接监听 `80`，测试地址 `http://43.198.137.234/` 直连返回 200；旧实例 `i-052190b6f08e3282b` 和 `i-00cd03f5b3cfbafab` 已发起终止。
 - 修复云端 Streamlit 1.39 不支持 `st.image(use_container_width=True)` 导致上传图片后报错的问题：新增 `_image()` 兼容封装，旧版自动退回 `use_column_width=True`；已重新打包上传 S3，并部署修复版实例 `i-017b0027602f81aed`，公网地址 `http://18.162.126.69/` 返回 200，旧实例 `i-0a23b365d8517d699` 已发起终止。
+- 已创建 GitHub public repo `https://github.com/zh23jemu/ColorROI-Analyzer-py`，本地 `master` 分支跟踪 `origin/master`；新增 `deploy/aws-git-sync-user-data.sh` 模板，用于让 AWS EC2 从 GitHub clone 项目并通过 systemd timer 定期执行 `git pull --ff-only` 同步代码。
 
 ## Next TODO
 
@@ -87,3 +88,4 @@
 - Python 重建采用核心算法包和 Streamlit UI 分离的结构，便于非交互式测试和后续界面维护。
 - 原项目资源和测试产物保留为迁移参考资料，不作为 Python 运行入口；后续验收以 Python 版功能和用户确认效果为准。
 - 临时公网验收优先采用单台 EC2 直接运行 Streamlit，减少部署复杂度和固定成本；图像依赖在 `t3.micro` 上安装和运行不稳定时，使用 `t3.small` 保证用户验收可用性。生产化再考虑域名、HTTPS、鉴权、容器化或托管平台。
+- GitHub 仓库作为本地和 AWS 的代码同步源；AWS 测试实例应从 public repo clone 代码，并通过快进式 `git pull --ff-only` 同步，避免继续依赖 S3 zip 包作为代码来源。
