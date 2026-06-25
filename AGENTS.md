@@ -75,6 +75,7 @@
 - 已回退“关闭画布实时回传”的交互方案：用户确认手动点击画布左下角应用标记不可接受，因此恢复 `st_canvas(update_streamlit=True)` 自动回传；当前限制是 `streamlit-drawable-canvas` 没有真正的前端局部橡皮擦，橡皮擦只能通过回传到 Python 后扣除累计标记层，若要做到无刷新即时擦除黄色/红色标记，需要后续替换为自定义前端画布组件。当前修改仅本地 commit，暂不 push。
 - 本地替换第三方画布组件：新增 `components/colorroi_canvas/index.html` 无构建自定义 Streamlit 前端组件，使用原图层、可见标记层、ROI mask 层和毛发 mask 层实现即时绘制与即时橡皮擦；橡皮擦通过前端 `destination-out` 只擦黄色/红色标记和隐藏 mask，不覆盖原图。`app.py` 改为通过组件回传的 PNG mask 更新 session，`pyproject.toml` 和 `requirements.txt` 已移除 `streamlit-drawable-canvas` 依赖，README 已同步说明。当前修改仅本地，暂不 push。
 - 修复自定义画布二次擦除时旧标记复活的问题：`app.py` 现在会在渲染前读取当前组件 key 的上一次 PNG mask 回传并合并到 session，再把最新累计 mask 传回前端，避免第二次擦除时组件被旧后端状态覆盖；新增测试覆盖组件回传格式识别。
+- 优化自定义画布橡皮擦闪动：前端组件只在图片或尺寸变化时重建底图，不因 ROI/毛发 mask 变化反复整层清空和重绘，减少第二次及后续橡皮擦时的轻微闪烁感。
 
 ## Next TODO
 

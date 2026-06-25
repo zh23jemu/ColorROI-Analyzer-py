@@ -83,7 +83,7 @@
       let args = {};
       let isDrawing = false;
       let lastPoint = null;
-      let currentSignature = "";
+      let currentImageSignature = "";
       let pendingEmit = null;
 
       function resizeCanvas(canvas, width, height) {
@@ -113,20 +113,15 @@
         args = nextArgs || {};
         const width = Number(args.width || 600);
         const height = Number(args.height || 400);
-        const signature = [
-          args.imageDataUrl || "",
-          args.roiMaskDataUrl || "",
-          args.hairMaskDataUrl || "",
-          width,
-          height,
-        ].join("|");
+        const signature = [args.imageDataUrl || "", width, height].join("|");
 
-        // 只有图片或后端 mask 真的变化时才重绘；切换工具和画笔粗细不清空当前前端图层。
-        if (signature === currentSignature) {
+        // 只在图片或尺寸变化时重建底图；mask 变化时保留当前前端绘制结果，
+        // 避免橡皮擦在 Streamlit rerun 中出现整层闪烁。
+        if (signature === currentImageSignature) {
           Streamlit.setFrameHeight(height);
           return;
         }
-        currentSignature = signature;
+        currentImageSignature = signature;
         setupSize(width, height);
         baseCtx.clearRect(0, 0, width, height);
         drawCtx.clearRect(0, 0, width, height);
