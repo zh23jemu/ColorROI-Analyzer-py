@@ -1,7 +1,7 @@
 import numpy as np
 
 from colorroi_analyzer.analysis import analyze_image
-from colorroi_analyzer.core import auto_hair_mask, fill_roi_from_boundary, load_rgb_image
+from colorroi_analyzer.core import fill_roi_from_boundary, load_rgb_image
 
 
 def test_fill_roi_from_closed_boundary():
@@ -38,16 +38,7 @@ def test_analyze_sample_image_smoke():
     assert abs(sum(result.clusters.ratios.values()) - 1) < 1e-6
 
 
-def test_auto_hair_mask_shape_and_type():
-    img = load_rgb_image("0.jpg")
-
-    hair = auto_hair_mask(img)
-
-    assert hair.shape == img.shape[:2]
-    assert hair.dtype == bool
-
-
-def test_analyze_uses_auto_hair_when_manual_mask_empty():
+def test_analyze_keeps_empty_hair_mask_when_not_marked():
     img = load_rgb_image("0.jpg")
     h, w = img.shape[:2]
     yy, xx = np.mgrid[:h, :w]
@@ -61,12 +52,12 @@ def test_analyze_uses_auto_hair_when_manual_mask_empty():
     result = analyze_image(img, boundary, np.zeros((h, w), dtype=bool))
 
     assert result.roi_px > 50
-    assert result.effective_px <= result.roi_px
-    assert result.hair_px >= 0
-    assert result.hair_source == "auto"
+    assert result.effective_px == result.roi_px
+    assert result.hair_px == 0
+    assert result.hair_source == "none"
 
 
-def test_analyze_preserves_auto_hair_source_hint():
+def test_analyze_uses_manual_hair_mask():
     img = load_rgb_image("0.jpg")
     h, w = img.shape[:2]
     yy, xx = np.mgrid[:h, :w]
@@ -78,7 +69,7 @@ def test_analyze_preserves_auto_hair_source_hint():
     )
     hair = (np.abs(xx - center_x) < 3) & (yy > h * 0.35) & (yy < h * 0.65)
 
-    result = analyze_image(img, boundary, hair, hair_source_hint="auto")
+    result = analyze_image(img, boundary, hair, hair_source_hint="manual")
 
     assert result.hair_px > 0
-    assert result.hair_source == "auto"
+    assert result.hair_source == "manual"

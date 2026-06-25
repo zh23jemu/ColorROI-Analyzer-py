@@ -793,36 +793,16 @@ def _prepare_hair_mask_for_analysis(
     roi_boundary: np.ndarray,
     hair_mask: np.ndarray,
 ) -> tuple[np.ndarray, str | None]:
-    """按 TXT 需求在界面层准备最终毛发 mask。
+    """按用户手动标注准备最终毛发 mask。
 
-    如果用户已经用红色画笔标注毛发，则优先使用手动 mask；如果没有红色标注，
-    这里直接执行自动毛发检测，并把结果限制在填充后的 ROI 内。这样 Streamlit
-    界面无需等待后端 dataclass 字段热更新，也能立即显示自动检测出的毛发区域。
+    当前版本不再自动识别毛发或遮挡。如果用户没有用红色画笔标注，分析会按
+    “无毛发标记”处理；如果用户已经标红色，则仅使用用户手动画出的红色 mask。
     """
 
     manual_hair = np.asarray(hair_mask).astype(bool)
     if manual_hair.any():
         return manual_hair, "manual"
-
-    roi = colorroi_core.fill_roi_from_boundary(roi_boundary)
-    if roi.shape != img.shape[:2] or not roi.any():
-        return manual_hair, None
-    return _auto_hair_mask(img) & roi, "auto"
-
-
-def _auto_hair_mask(img: np.ndarray) -> np.ndarray:
-    """动态获取自动毛发检测函数，兼容 Streamlit 热更新模块缓存。
-
-    旧 Streamlit 进程有时会缓存修改前的 `colorroi_analyzer.core` 模块，导致顶层
-    `from ... import auto_hair_mask` 在页面刷新时直接失败。这里把函数获取延迟到
-    点击分析时；如果当前模块对象没有该函数，就 reload 一次本地 core 模块再取。
-    """
-
-    detector = getattr(colorroi_core, "auto_hair_mask", None)
-    if detector is None:
-        reloaded_core = importlib.reload(colorroi_core)
-        detector = getattr(reloaded_core, "auto_hair_mask")
-    return detector(img)
+    return manual_hair, "none"
 
 
 def _render_previews(img: np.ndarray, roi_boundary: np.ndarray, hair_mask: np.ndarray, roi_source: str) -> None:
@@ -972,13 +952,13 @@ def _effective_px(analysis) -> int:
 
 
 def _hair_source_label(analysis) -> str:
-    """返回毛发 mask 来源，用于区分 TXT 需求中的手动标注和自动检测。"""
+    """返回毛发 mask 来源，用于区分手动标注和未标注。"""
 
     source = str(getattr(analysis, "hair_source", "") or "")
-    if source == "auto":
-        return "Auto"
     if source == "manual":
         return "Manual"
+    if source == "none":
+        return "None"
     return "Unknown"
 
 

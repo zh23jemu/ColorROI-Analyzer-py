@@ -1,7 +1,7 @@
-"""批量复核 pics 样张的自动毛发标注结果。
+"""批量生成 pics 样张的基础分析报告。
 
-这个脚本用于开发阶段快速检查自动毛发检测质量：它会遍历
-`pics/` 中的样张，使用整图边界作为 ROI 参考，调用当前核心分析逻辑，并输出：
+这个脚本用于开发阶段快速检查核心分析链路：它会遍历 `pics/` 中的样张，
+使用整图边界作为 ROI 参考，并且不自动生成毛发/遮挡 mask，然后输出：
 
 - `reports/pics_hair_review/index.html`：依赖 `previews/` 目录的本地复核报告；
 - `reports/pics_hair_review/index_standalone.html`：图片已内嵌的单文件报告，适合直接发给用户；
@@ -9,7 +9,7 @@
 - `reports/pics_hair_review/previews/`：每张图的原图缩略图、毛发叠加图和热图。
 
 注意：这里的 ROI 仅用于批量复核的参考输入，不代表正式页面里存在自动识别功能；
-正式结果仍以 Streamlit 页面中手动画出的黄色 ROI 为准。
+正式结果仍以 Streamlit 页面中手动画出的黄色 ROI 和红色毛发/遮挡标记为准。
 """
 
 from __future__ import annotations
@@ -76,27 +76,27 @@ def main() -> None:
     _write_html(rows, REPORT_DIR / "index.html", inline_assets=False)
     _write_html(rows, REPORT_DIR / "index_standalone.html", inline_assets=True)
 
-    print(f"已生成 {len(rows)} 张样张的毛发标注复核报告：{REPORT_DIR / 'index.html'}")
+    print(f"已生成 {len(rows)} 张样张的基础分析报告：{REPORT_DIR / 'index.html'}")
 
 
 def _analyze_one(path: Path) -> ReviewRow:
     """分析单张图片并保存对应预览图。
 
-    批量复核没有人工黄色 ROI，因此这里使用整图边界作为 ROI 参考。报告用于
-    让用户确认自动毛发识别是否稳定；正式页面里仍然以手动画黄色 ROI 为准。
+    批量复核没有人工黄色 ROI，因此这里使用整图边界作为 ROI 参考，并传入
+    空的毛发 mask。正式页面里仍然以手动画黄色 ROI 和红色毛发/遮挡标记为准。
     """
 
     img = load_rgb_image(path)
     height, width = img.shape[:2]
     roi_boundary = _make_inset_rectangle_boundary(height, width)
 
-    # hair_mask 传 None 时，核心分析函数会按 TXT 需求自动执行 black-hat + Otsu 毛发检测。
+    hair_mask = np.zeros((height, width), dtype=bool)
     result = analyze_image(
         img,
         roi_boundary,
-        hair_mask=None,
+        hair_mask=hair_mask,
         repair_hair=True,
-        hair_source_hint="auto",
+        hair_source_hint="none",
     )
 
     stem = _safe_stem(path)
@@ -151,7 +151,7 @@ def _make_inset_rectangle_boundary(height: int, width: int) -> np.ndarray:
 
 
 def _make_hair_overlay(img: np.ndarray, roi: np.ndarray, hair: np.ndarray) -> Image.Image:
-    """生成自动毛发标注叠加图：ROI 用淡黄蒙版，毛发用红色高亮。"""
+    """生成手动毛发标注叠加图：ROI 用淡黄蒙版，毛发用红色高亮。"""
 
     base = np.clip(np.asarray(img, dtype=np.float32), 0.0, 1.0).copy()
     roi_mask = np.asarray(roi).astype(bool)
@@ -159,7 +159,7 @@ def _make_hair_overlay(img: np.ndarray, roi: np.ndarray, hair: np.ndarray) -> Im
 
     # 先给 ROI 区域加一层很轻的黄色，帮助用户确认本次批量复核的分析范围。
     base[roi_mask] = base[roi_mask] * 0.82 + np.array([1.0, 0.86, 0.18], dtype=np.float32) * 0.18
-    # 再把自动检测到的毛发位置用红色突出显示，颜色权重较高，便于肉眼检查漏检/误检。
+    # 再把传入的毛发位置用红色突出显示；当前脚本默认传入空 mask，不做自动识别。
     base[hair_mask] = base[hair_mask] * 0.30 + np.array([1.0, 0.05, 0.02], dtype=np.float32) * 0.70
     return to_uint8_image(base)
 
@@ -202,7 +202,7 @@ def _write_html(rows: list[ReviewRow], output_path: Path, inline_assets: bool) -
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>pics 样张毛发识别复核</title>
+  <title>pics 样张基础分析报告</title>
   <style>
     body {{
       margin: 0;
@@ -303,8 +303,8 @@ def _write_html(rows: list[ReviewRow], output_path: Path, inline_assets: bool) -
 </head>
 <body>
   <header>
-    <h1>pics 样张毛发识别复核</h1>
-    <p class="note">红色区域为 ROI 内自动识别的毛发/遮挡候选。正式分析时，用户需要在页面中手动画黄色边界定义 ROI；系统会在最终 ROI 内排除毛发后计算颜色指标。</p>
+    <h1>pics 样张基础分析报告</h1>
+    <p class="note">本报告不自动识别皮损、毛发或遮挡。正式分析时，用户需要在页面中手动画黄色边界定义 ROI，并按需用红色画笔标注毛发/遮挡；系统会在最终 ROI 内排除红色标记后计算颜色指标。</p>
   </header>
   <main>
 {cards}
@@ -335,7 +335,7 @@ def _render_card(row: ReviewRow, inline_assets: bool) -> str:
       </div>
       <div class="images">
         {_figure(row.original_preview, "原图", inline_assets)}
-        {_figure(row.overlay_preview, "毛发遮挡（红色）", inline_assets)}
+        {_figure(row.overlay_preview, "ROI 参考范围 / 毛发遮挡标记", inline_assets)}
         {_figure(row.heatmap_preview, "DMDI 热图", inline_assets)}
       </div>
     </section>"""

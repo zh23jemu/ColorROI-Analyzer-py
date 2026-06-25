@@ -8,7 +8,6 @@ import numpy as np
 
 from .core import (
     ClusterResult,
-    auto_hair_mask,
     cluster_lab_colors,
     fill_roi_from_boundary,
     inpaint_masked_pixels,
@@ -46,10 +45,10 @@ def analyze_image(
     参数:
         img: 0-1 RGB 图片数组。
         roi_boundary: 黄色手绘边界 mask，函数内部会填充为实心 ROI。
-        hair_mask: 红色毛发或遮挡 mask；为空或没有任何像素时自动检测毛发。
+        hair_mask: 红色毛发或遮挡 mask；为空或没有任何像素时按无毛发标记处理。
         repair_hair: 是否在分析前对红色 mask 做局部修复。
-        hair_source_hint: 调用方已提前准备毛发 mask 时，可传入 `manual` 或 `auto`
-            标记来源，便于界面按 TXT 需求显示毛发来自手动标注还是自动检测。
+        hair_source_hint: 调用方可传入 `manual` 或 `none` 标记来源，便于界面显示
+            本轮毛发区域来自手动标注还是没有标注。
 
     返回:
         AnalysisResult，包含 ROI、修复后图片、Lab 像素、四分类比例和 DMDI。
@@ -66,10 +65,8 @@ def analyze_image(
     hair = np.zeros((h, w), dtype=bool) if hair_mask is None else np.asarray(hair_mask).astype(bool)
     if hair.shape != (h, w):
         raise ValueError("Hair mask size must match the image size.")
-    hair_source = hair_source_hint or "manual"
-    if not hair.any():
-        hair = auto_hair_mask(image) & roi
-        hair_source = "auto"
+    hair &= roi
+    hair_source = hair_source_hint or ("manual" if hair.any() else "none")
 
     clean = inpaint_masked_pixels(image, hair, roi) if repair_hair else image.copy()
     effective_mask = roi & (~hair)

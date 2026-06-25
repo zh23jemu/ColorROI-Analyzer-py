@@ -12,7 +12,7 @@
 
 ## 当前架构
 
-当前已建立 `src/colorroi_analyzer/` 核心算法包，并将 R 版的图片读取、ROI 边界填充、手动/自动毛发检测与局部修复、RGB 到 Lab、KMeans 四分类、DMDI 计算和热图生成迁移到 Python。`app.py` 是 Streamlit 交互界面入口，支持上传图片、画 ROI/毛发、自动毛发兜底分析、预览、保存记录和 CSV 导出。`scripts/` 中已提供冒烟测试、图片目录检查和人工复核表生成脚本，`tests/` 中已提供核心算法 pytest 测试。
+当前已建立 `src/colorroi_analyzer/` 核心算法包，并将 R 版的图片读取、ROI 边界填充、手动毛发/遮挡标注与局部修复、RGB 到 Lab、KMeans 四分类、DMDI 计算和热图生成迁移到 Python。`app.py` 是 Streamlit 交互界面入口，支持上传图片、手动画 ROI/毛发、预览、保存记录和 CSV 导出；当前已按用户要求移除自动识别皮损、毛发和遮挡的能力。`scripts/` 中已提供冒烟测试、图片目录检查和人工复核表生成脚本，`tests/` 中已提供核心算法 pytest 测试。
 
 ## 开发规范
 
@@ -32,6 +32,7 @@
 
 ## Recent Changes
 
+- 已按用户追问继续移除自动毛发/遮挡检测：`analyze_image()` 不再在红色 mask 为空时调用自动检测，`auto_hair_mask()` 已从核心包和公共导出中移除；未标红色时按无毛发标记处理。
 - 已按用户要求移除自动皮损/ROI 候选能力：应用入口不再显示自动识别选项，`auto_lesion_mask()` 已从核心包移除，公共导出和相关测试也已清理；正式分析只接受手动画出的黄色 ROI。
 - 从原 R 项目复制 `pics/`、`test-artifacts/`、`docs/`、`0.jpg`、`1.jpg` 和早期原型文本。
 - 创建 Python 项目初始 `README.md`。
@@ -49,15 +50,13 @@
 - 将 Streamlit 兼容 shim 从简单函数转挂改为旧签名包装器，修复新版 `image_to_url` 把旧版整数 `width` 参数误当作 `LayoutConfig` 导致的 `.width` 报错。
 - 将 Streamlit 画布 mask 提取改为优先解析 `canvas_result.json_data` 中的 Fabric path 对象，并根据路径颜色重建黄色 ROI 边界和红色毛发 mask，避免背景图片颜色干扰。
 - 新增 `tests/test_app_masks.py`，覆盖基于画布 JSON 路径提取 ROI/毛发 mask 并填充 ROI 的流程；当前 pytest 3 项通过。
-- 新增 `auto_hair_mask()`，迁移 TXT 原始需求里的自动毛发检测流程：灰度图、closing、black-hat、Otsu 阈值和 opening。
-- 更新 `analyze_image()`：红色手动毛发 mask 为空时自动检测 ROI 内毛发；分析像素改为 `ROI - 毛发` 有效区。
+- 历史上曾新增 `auto_hair_mask()` 自动毛发检测，现已按用户要求移除；分析像素仍按 `ROI - 手动红色毛发/遮挡` 有效区计算。
 - Streamlit 指标和导出记录新增 `effective_px`，用于显示/保存 ROI 有效分析像素数。
-- 新增自动毛发检测和空手动 mask 分析测试；当前 pytest 5 项通过，核心冒烟测试通过。
+- 新增空手动 mask 分析测试，确认未标红色时不会自动生成毛发/遮挡标记；核心冒烟测试通过。
 - 修复 Streamlit session 中旧版 `AnalysisResult` 对象缺少 `effective_px` 时的 UI 渲染报错，新增 `_effective_px()` 兜底函数；当前 pytest 5 项通过。
-- 分析结果新增 `hair_source`，UI 指标显示毛发 mask 来源；预览图改为显示分析后的自动/手动毛发 mask，并在上传文件变化时清理旧分析状态。命令行模拟 ROI 验证自动毛发来源为 `auto` 且检测到 516 px，pytest 5 项通过。
-- app 层新增 `_prepare_hair_mask_for_analysis()`，点击分析前显式生成最终毛发 mask，并通过 `hair_source_hint` 传入 `analyze_image()`；命令行验证返回 `auto 516`，pytest 6 项通过。
-- 移除 `app.py` 对 `auto_hair_mask` 的顶层直接导入，改为动态获取并在缺失时 reload `colorroi_analyzer.core`，修复旧 Streamlit 模块缓存导致刷新页面 ImportError；当前 `import app`、pytest 6 项和自动毛发模拟均通过。
-- 将 `analyze_image()` 顶层直接导入改为动态模块调用，遇到旧签名 `hair_source_hint` 报错时 reload `analysis.py` 后重试，仍不支持时退回旧调用并补来源字段；当前 app 层模拟输出 `auto 516 auto 516`，pytest 6 项通过。
+- 分析结果新增 `hair_source`，UI 指标显示毛发 mask 来源；当前来源只区分 `Manual` 和 `None`，上传文件变化时会清空旧分析状态。
+- app 层 `_prepare_hair_mask_for_analysis()` 现在只准备用户手动红色 mask；没有红色标记时返回空 mask 和 `none` 来源。
+- 将 `analyze_image()` 顶层直接导入改为动态模块调用，遇到旧签名 `hair_source_hint` 报错时 reload `analysis.py` 后重试，仍不支持时退回旧调用并补来源字段。
 - 优化 Streamlit 分析结果指标布局，将基础像素指标和颜色/DMDI 指标拆成两行，修复右侧“灰、蓝灰、DMDI”显示被截断的问题。
 - 新增 `scripts/batch_review_pics.py`，批量分析 `pics/` 样张并生成 HTML 复核报告、CSV 汇总、原图/毛发叠加/DMDI 热图预览；当前 8 张样张已全部生成报告。
 - `scripts/batch_review_pics.py` 新增单文件报告输出 `reports/pics_hair_review/index_standalone.html`，图片以内嵌 base64 形式写入，方便直接发给用户确认。
@@ -86,8 +85,8 @@
 
 ## Next TODO
 
-- 在浏览器中重新执行一次完整人工流程：上传真实样例、手绘 ROI、不标红色毛发时验证自动毛发检测、再标红色毛发时验证人工 mask 优先、保存记录和导出 CSV。
-- 打开 `reports/pics_hair_review/index_standalone.html` 人工查看每张样张红色毛发候选是否漏检或误检，并据此决定是否继续调自动毛发参数。
+- 在浏览器中重新执行一次完整人工流程：上传真实样例、手绘 ROI、不标红色毛发时验证 Hair marks 显示为 `None` 且像素为 0，再标红色毛发时验证人工 mask 生效、保存记录和导出 CSV。
+- 打开 `reports/pics_hair_review/index_standalone.html` 查看样张基础分析报告；该报告不再自动识别皮损、毛发或遮挡。
 - 在浏览器中重点复核自定义前端画布：黄色 ROI、红色毛发、橡皮擦即时擦标记、清空标记、开始分析、保存记录和 CSV 导出。
 - 在 Windows 服务器上 `git pull` 更新后，重新上传图片确认 `Bad message format` 弹窗是否消失，并确认画布绘制/橡皮擦/分析流程仍正常。
 - 如果 Windows 服务器更新后仍持续 `Running...`，优先检查服务器是否已重启 Streamlit 进程、浏览器是否仍缓存旧组件 HTML，以及服务器实际 Streamlit 版本；Python 3.12 本身不是当前首要怀疑点。
