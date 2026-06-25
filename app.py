@@ -84,7 +84,16 @@ def main() -> None:
     if clear_marks:
         _reset_canvas_marks(canvas_signature, (display_img.height, display_img.width))
     canvas_key = _canvas_key(uploaded, display_img)
-    _merge_component_value_into_state(_pending_component_value(canvas_key), (display_img.height, display_img.width))
+    pending_component_value = _pending_component_value(canvas_key)
+    merged_canvas_value = _merge_component_value_into_state(
+        pending_component_value,
+        (display_img.height, display_img.width),
+    )
+    should_run_analysis = _consume_pending_analysis(pending_component_value, merged_canvas_value)
+    if run_analysis:
+        st.session_state.canvas_sync_token = int(st.session_state.canvas_sync_token) + 1
+        st.session_state.canvas_pending_analysis_token = int(st.session_state.canvas_sync_token)
+        should_run_analysis = False
     display_roi, display_hair = _current_display_masks()
     canvas_value = _render_annotation_canvas(
         display_img=display_img,
@@ -92,13 +101,14 @@ def main() -> None:
         hair_mask=display_hair,
         draw_mode=draw_mode,
         brush_size=brush_size,
+        sync_token=int(st.session_state.canvas_sync_token),
         key=canvas_key,
     )
     _merge_component_value_into_state(canvas_value, (display_img.height, display_img.width))
 
     roi_boundary, hair_mask = _current_masks_for_analysis(img.shape[:2])
     roi_boundary, roi_source = _prepare_roi_boundary(img, roi_boundary, use_auto_lesion)
-    if run_analysis:
+    if should_run_analysis:
         hair_mask, hair_source = _prepare_hair_mask_for_analysis(img, roi_boundary, hair_mask)
         _run_analysis(img, roi_boundary, hair_mask, repair_hair, hair_source, roi_source)
 
@@ -130,6 +140,8 @@ def _init_state() -> None:
     st.session_state.setdefault("canvas_version", 0)
     st.session_state.setdefault("canvas_roi_display", None)
     st.session_state.setdefault("canvas_hair_display", None)
+    st.session_state.setdefault("canvas_sync_token", 0)
+    st.session_state.setdefault("canvas_pending_analysis_token", None)
 
 
 def _reset_analysis_when_upload_changes(uploaded) -> None:
@@ -144,6 +156,8 @@ def _reset_analysis_when_upload_changes(uploaded) -> None:
         st.session_state.canvas_version = 0
         st.session_state.canvas_roi_display = None
         st.session_state.canvas_hair_display = None
+        st.session_state.canvas_sync_token = 0
+        st.session_state.canvas_pending_analysis_token = None
 
 
 def _read_uploaded_image(uploaded) -> np.ndarray:
@@ -267,6 +281,7 @@ def _render_annotation_canvas(
     hair_mask: np.ndarray,
     draw_mode: str,
     brush_size: int,
+    sync_token: int,
     key: str,
 ) -> dict | None:
     """渲染本地自定义标注画布，并返回前端回传的二值 mask。
@@ -289,32 +304,52 @@ def _render_annotation_canvas(
         height=int(display_img.height),
         mode=_canvas_component_mode(draw_mode),
         brushSize=int(brush_size),
+        syncToken=int(sync_token),
         key=key,
         default=None,
     )
 
 
-def _merge_component_value_into_state(value: dict | None, display_shape: tuple[int, int]) -> None:
+def _merge_component_value_into_state(value: dict | None, display_shape: tuple[int, int]) -> bool:
     """把自定义前端画布回传的 mask 合并到 Streamlit session。
 
-    前端每次完成一笔都会回传完整 ROI/毛发 mask。Python 端只保存二值层，后续
-    分析、自动 ROI 优先级判断和导出都继续沿用原来的 mask 流程。
+    画笔和橡皮擦都在浏览器本地即时生效；只有点击 Analyze 时，Python 端才通过
+    `syncToken` 请求组件回传一次完整 ROI/毛发 mask。返回值表示本轮是否收到了一份
+    有效组件回传，供“同步后自动分析”的流程判断。
     """
 
     if not isinstance(value, dict):
-        return
+        return False
     roi_mask = _mask_from_data_url(value.get("roiMaskDataUrl"), display_shape)
     hair_mask = _mask_from_data_url(value.get("hairMaskDataUrl"), display_shape)
     if roi_mask is None or hair_mask is None:
-        return
+        return False
 
     current_roi, current_hair = _current_display_masks()
     if np.array_equal(current_roi, roi_mask) and np.array_equal(current_hair, hair_mask):
-        return
+        return True
 
     st.session_state.canvas_roi_display = roi_mask
     st.session_state.canvas_hair_display = hair_mask
     st.session_state.analysis = None
+    return True
+
+
+def _consume_pending_analysis(value: dict | None, merged_canvas_value: bool) -> bool:
+    """判断组件同步是否已经完成，并把一次 Analyze 点击延续到下一轮执行。
+
+    Streamlit 按钮值只在当前 rerun 为 True。点击 Analyze 时应用先递增 `syncToken`
+    要求前端把当前画布 mask 回传；这次回传会触发下一轮 rerun。这里读取回传里的
+    token，确认它正是本次请求对应的值后再真正运行分析，避免用户需要点击两次。
+    """
+
+    pending_token = st.session_state.canvas_pending_analysis_token
+    if pending_token is None or not merged_canvas_value or not isinstance(value, dict):
+        return False
+    if int(value.get("syncToken") or -1) != int(pending_token):
+        return False
+    st.session_state.canvas_pending_analysis_token = None
+    return True
 
 
 def _canvas_component_mode(draw_mode: str) -> str:

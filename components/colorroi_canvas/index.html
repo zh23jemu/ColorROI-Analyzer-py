@@ -109,6 +109,7 @@
       let currentImageSignature = "";
       let pendingEmit = null;
       let renderSeq = 0;
+      let lastSyncedToken = 0;
 
       function resizeCanvas(canvas, width, height) {
         canvas.width = width;
@@ -256,7 +257,7 @@
         targetCtx.restore();
       }
 
-      function emitMasks() {
+      function emitMasks(syncToken) {
         if (!firstRenderReceived) {
           return;
         }
@@ -265,6 +266,7 @@
           Streamlit.setComponentValue({
             roiMaskDataUrl: roiMaskCanvas.toDataURL("image/png"),
             hairMaskDataUrl: hairMaskCanvas.toDataURL("image/png"),
+            syncToken,
           });
         }, 30);
       }
@@ -295,7 +297,6 @@
         event.preventDefault();
         isDrawing = false;
         lastPoint = null;
-        emitMasks();
       }
 
       drawCanvas.addEventListener("pointerdown", startDrawing);
@@ -314,6 +315,11 @@
           Streamlit.setFrameHeight(pendingFrameHeight);
         }
         renderFromArgs(data.args || {});
+        const syncToken = Number((data.args || {}).syncToken || 0);
+        if (syncToken > 0 && syncToken !== lastSyncedToken) {
+          lastSyncedToken = syncToken;
+          emitMasks(syncToken);
+        }
       });
 
       // 等当前脚本执行完再通知父页面组件已就绪，避免和 Streamlit 会话初始化竞争。

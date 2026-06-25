@@ -80,6 +80,7 @@
 - 根据用户反馈调整预览标题，将 `After hair inpainting` 改为 `After hair removal`，更贴近“毛发去除后”的表达。
 - 修复 Windows 服务器上传图片后自定义画布组件偶发 `Bad message format` 弹窗：组件通信增加 `componentReady` 防重复、首帧 `streamlit:render` 初始化保护，以及高度和 mask 回传守卫；当前 `.venv\Scripts\python.exe -m pytest` 12 项通过，`import app` 正常。
 - 继续修复 Windows 服务器上传图片后页面持续 `Running...` 并重新加载的问题：自定义画布组件现在对重复 `setFrameHeight` 做去重，同一高度不会反复通知 Streamlit；图片和 mask 异步加载增加 render 序号保护，旧加载结果不会覆盖新画布。当前 `.venv\Scripts\python.exe -m pytest` 12 项通过，`import app` 正常。
+- 优化自定义画布同步机制：画笔和橡皮擦操作只在浏览器前端即时更新，不再每画一笔或每擦一次就调用 `setComponentValue` 触发 Streamlit rerun；点击 `Analyze` 时通过 `syncToken` 请求组件回传一次完整 ROI/毛发 mask，下一轮自动执行分析。新增 pending token 回归测试，当前 `.venv\Scripts\python.exe -m pytest` 13 项通过。
 
 ## Next TODO
 
@@ -88,6 +89,7 @@
 - 在浏览器中重点复核自定义前端画布：黄色 ROI、红色毛发、橡皮擦即时擦标记、清空标记、开始分析、保存记录和 CSV 导出。
 - 在 Windows 服务器上 `git pull` 更新后，重新上传图片确认 `Bad message format` 弹窗是否消失，并确认画布绘制/橡皮擦/分析流程仍正常。
 - 如果 Windows 服务器更新后仍持续 `Running...`，优先检查服务器是否已重启 Streamlit 进程、浏览器是否仍缓存旧组件 HTML，以及服务器实际 Streamlit 版本；Python 3.12 本身不是当前首要怀疑点。
+- 在服务器上复核新的 Analyze 同步流程：绘制 ROI、毛发标记和橡皮擦时页面不应再整页刷新；点击 Analyze 后允许出现一次正常 rerun，并应自动完成分析。
 - 用户完成公网测试后，终止 AWS 实例 `i-035e3e54eeef40e32` 并清理安全组 `sg-06d20438196dca6f6`，避免持续计费。
 
 ## Open Issues
@@ -104,3 +106,4 @@
 - 原项目资源和测试产物保留为迁移参考资料，不作为 Python 运行入口；后续验收以 Python 版功能和用户确认效果为准。
 - 临时公网验收优先采用单台 EC2 直接运行 Streamlit，减少部署复杂度和固定成本；图像依赖在 `t3.micro` 上安装和运行不稳定时，使用 `t3.small` 保证用户验收可用性。生产化再考虑域名、HTTPS、鉴权、容器化或托管平台。
 - GitHub 仓库作为本地和 AWS 的代码同步源；AWS 测试实例应从 public repo clone 代码，并通过快进式 `git pull --ff-only` 同步，避免继续依赖 S3 zip 包作为代码来源。
+- 自定义画布采用前端本地即时编辑、Analyze 时一次性同步 mask 的交互模型；这是为了避开 Streamlit 组件值回传必然触发 rerun 的机制，提升画笔和橡皮擦连续操作体验。

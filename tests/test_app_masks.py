@@ -2,6 +2,7 @@ import numpy as np
 
 from app import (
     _apply_canvas_json_to_masks,
+    _consume_pending_analysis,
     _extract_masks,
     _mask_from_data_url,
     _mask_to_data_url,
@@ -174,9 +175,24 @@ def test_pending_component_value_reads_only_new_canvas_masks(monkeypatch):
     monkeypatch.setitem(
         __import__("streamlit").session_state,
         "canvas_key",
-        {"roiMaskDataUrl": roi_url, "hairMaskDataUrl": hair_url},
+        {"roiMaskDataUrl": roi_url, "hairMaskDataUrl": hair_url, "syncToken": 3},
     )
     monkeypatch.setitem(__import__("streamlit").session_state, "old_key", {"json_data": {"objects": []}})
 
-    assert _pending_component_value("canvas_key") == {"roiMaskDataUrl": roi_url, "hairMaskDataUrl": hair_url}
+    assert _pending_component_value("canvas_key") == {
+        "roiMaskDataUrl": roi_url,
+        "hairMaskDataUrl": hair_url,
+        "syncToken": 3,
+    }
     assert _pending_component_value("old_key") is None
+
+
+def test_consume_pending_analysis_requires_matching_sync_token(monkeypatch):
+    session_state = __import__("streamlit").session_state
+    monkeypatch.setitem(session_state, "canvas_pending_analysis_token", 7)
+
+    assert not _consume_pending_analysis({"syncToken": 6}, merged_canvas_value=True)
+    assert session_state.canvas_pending_analysis_token == 7
+
+    assert _consume_pending_analysis({"syncToken": 7}, merged_canvas_value=True)
+    assert session_state.canvas_pending_analysis_token is None
