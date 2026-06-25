@@ -76,6 +76,7 @@ def main() -> None:
     if clear_marks:
         _reset_canvas_marks(canvas_signature, (display_img.height, display_img.width))
     canvas_key = _canvas_key(uploaded, display_img)
+    _merge_component_value_into_state(_pending_component_value(canvas_key), (display_img.height, display_img.width))
     display_roi, display_hair = _current_display_masks()
     canvas_value = _render_annotation_canvas(
         display_img=display_img,
@@ -217,6 +218,23 @@ def _pending_canvas_json(canvas_key: str) -> dict | None:
         return json_data if isinstance(json_data, dict) else None
     json_data = getattr(value, "json_data", None)
     return json_data if isinstance(json_data, dict) else None
+
+
+def _pending_component_value(canvas_key: str) -> dict | None:
+    """读取自定义画布上一次回传、但本轮渲染前尚未合并的 mask。
+
+    Streamlit 自定义组件会把前端返回值存到 `st.session_state[canvas_key]`。
+    如果先渲染组件再合并该值，前端会短暂收到旧 mask，表现为第二次擦除时第一
+    次擦掉的标记又被旧状态画回来。这里在渲染前先合并上一次回传值，保证组件
+    每一轮拿到的都是最新累计 mask。
+    """
+
+    value = st.session_state.get(canvas_key)
+    if not isinstance(value, dict):
+        return None
+    if "roiMaskDataUrl" not in value or "hairMaskDataUrl" not in value:
+        return None
+    return value
 
 
 def _current_display_masks() -> tuple[np.ndarray, np.ndarray]:

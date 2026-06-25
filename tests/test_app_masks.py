@@ -1,6 +1,12 @@
 import numpy as np
 
-from app import _apply_canvas_json_to_masks, _extract_masks, _mask_from_data_url, _mask_to_data_url
+from app import (
+    _apply_canvas_json_to_masks,
+    _extract_masks,
+    _mask_from_data_url,
+    _mask_to_data_url,
+    _pending_component_value,
+)
 from colorroi_analyzer.core import fill_roi_from_boundary
 
 
@@ -160,3 +166,17 @@ def test_mask_data_url_roundtrip_preserves_alpha():
 
     assert decoded is not None
     assert np.array_equal(decoded, mask)
+
+
+def test_pending_component_value_reads_only_new_canvas_masks(monkeypatch):
+    roi_url = _mask_to_data_url(np.ones((4, 5), dtype=bool))
+    hair_url = _mask_to_data_url(np.zeros((4, 5), dtype=bool))
+    monkeypatch.setitem(
+        __import__("streamlit").session_state,
+        "canvas_key",
+        {"roiMaskDataUrl": roi_url, "hairMaskDataUrl": hair_url},
+    )
+    monkeypatch.setitem(__import__("streamlit").session_state, "old_key", {"json_data": {"objects": []}})
+
+    assert _pending_component_value("canvas_key") == {"roiMaskDataUrl": roi_url, "hairMaskDataUrl": hair_url}
+    assert _pending_component_value("old_key") is None
