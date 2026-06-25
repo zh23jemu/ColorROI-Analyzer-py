@@ -827,7 +827,7 @@ def _render_previews(img: np.ndarray, roi_boundary: np.ndarray, hair_mask: np.nd
     _image(cols[0], colorroi_core.to_uint8_image(img), caption="Original image")
     _image(cols[1], _make_overlay_preview(img, roi_boundary, display_hair), caption=roi_caption)
     if analysis is not None:
-        _image(cols[2], colorroi_core.to_uint8_image(analysis.clean_image), caption="After hair inpainting")
+        _image(cols[2], colorroi_core.to_uint8_image(analysis.clean_image), caption="After hair removal")
         _image(cols[3], colorroi_core.to_uint8_image(analysis.heatmap), caption="DMDI heatmap")
     else:
         cols[2].empty()
