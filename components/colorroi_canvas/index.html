@@ -51,11 +51,9 @@
       // 轻量实现 Streamlit component 通信协议，避免为一个画布组件引入 npm 构建链。
       // 注意：新版 Streamlit 前端在会话对象初始化完成前收到组件消息时，
       // 可能弹出 “Tried to use SessionInfo before it was initialized”。
-      // 因此所有发给父页面的消息都经过初始化状态保护，首帧 render 后再允许回传值。
+      // 因此组件只保留必要消息：初始化 ready，以及点击 Analyze 后的一次 mask 回传。
       let componentReadySent = false;
       let firstRenderReceived = false;
-      let pendingFrameHeight = null;
-      let lastFrameHeightSent = null;
 
       const Streamlit = {
         ready() {
@@ -65,20 +63,6 @@
           componentReadySent = true;
           window.parent.postMessage(
             { isStreamlitMessage: true, type: "streamlit:componentReady", apiVersion: 1 },
-            "*"
-          );
-        },
-        setFrameHeight(height) {
-          pendingFrameHeight = height;
-          if (!firstRenderReceived) {
-            return;
-          }
-          if (height === lastFrameHeightSent) {
-            return;
-          }
-          lastFrameHeightSent = height;
-          window.parent.postMessage(
-            { isStreamlitMessage: true, type: "streamlit:setFrameHeight", height },
             "*"
           );
         },
@@ -122,7 +106,6 @@
         }
         wrap.style.width = `${width}px`;
         wrap.style.height = `${height}px`;
-        Streamlit.setFrameHeight(height);
       }
 
       function loadImage(src) {
@@ -144,7 +127,6 @@
         // 只在图片或尺寸变化时重建底图；mask 变化时保留当前前端绘制结果，
         // 避免橡皮擦在 Streamlit rerun 中出现整层闪烁。
         if (signature === currentImageSignature) {
-          Streamlit.setFrameHeight(height);
           return;
         }
         currentImageSignature = signature;
@@ -311,9 +293,6 @@
           return;
         }
         firstRenderReceived = true;
-        if (pendingFrameHeight !== null) {
-          Streamlit.setFrameHeight(pendingFrameHeight);
-        }
         renderFromArgs(data.args || {});
         const syncToken = Number((data.args || {}).syncToken || 0);
         if (syncToken > 0 && syncToken !== lastSyncedToken) {

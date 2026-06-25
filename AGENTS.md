@@ -81,6 +81,7 @@
 - 修复 Windows 服务器上传图片后自定义画布组件偶发 `Bad message format` 弹窗：组件通信增加 `componentReady` 防重复、首帧 `streamlit:render` 初始化保护，以及高度和 mask 回传守卫；当前 `.venv\Scripts\python.exe -m pytest` 12 项通过，`import app` 正常。
 - 继续修复 Windows 服务器上传图片后页面持续 `Running...` 并重新加载的问题：自定义画布组件现在对重复 `setFrameHeight` 做去重，同一高度不会反复通知 Streamlit；图片和 mask 异步加载增加 render 序号保护，旧加载结果不会覆盖新画布。当前 `.venv\Scripts\python.exe -m pytest` 12 项通过，`import app` 正常。
 - 优化自定义画布同步机制：画笔和橡皮擦操作只在浏览器前端即时更新，不再每画一笔或每擦一次就调用 `setComponentValue` 触发 Streamlit rerun；点击 `Analyze` 时通过 `syncToken` 请求组件回传一次完整 ROI/毛发 mask，下一轮自动执行分析。新增 pending token 回归测试，当前 `.venv\Scripts\python.exe -m pytest` 13 项通过。
+- 继续压缩自定义画布触发 Streamlit rerun 的来源：前端已移除所有 `streamlit:setFrameHeight` 消息，iframe 高度由 Python 端组件参数固定传入；组件运行期间只发送初始化 `componentReady` 和点击 `Analyze` 后的一次 `setComponentValue`。当前 `.venv\Scripts\python.exe -m pytest` 13 项通过，`import app` 正常。
 
 ## Next TODO
 
@@ -90,6 +91,7 @@
 - 在 Windows 服务器上 `git pull` 更新后，重新上传图片确认 `Bad message format` 弹窗是否消失，并确认画布绘制/橡皮擦/分析流程仍正常。
 - 如果 Windows 服务器更新后仍持续 `Running...`，优先检查服务器是否已重启 Streamlit 进程、浏览器是否仍缓存旧组件 HTML，以及服务器实际 Streamlit 版本；Python 3.12 本身不是当前首要怀疑点。
 - 在服务器上复核新的 Analyze 同步流程：绘制 ROI、毛发标记和橡皮擦时页面不应再整页刷新；点击 Analyze 后允许出现一次正常 rerun，并应自动完成分析。
+- 若服务器端仍然非分析操作也持续刷新，下一步重点检查浏览器是否加载到最新 `components/colorroi_canvas/index.html`，以及 Streamlit 版本是否对手写组件协议存在额外限制。
 - 用户完成公网测试后，终止 AWS 实例 `i-035e3e54eeef40e32` 并清理安全组 `sg-06d20438196dca6f6`，避免持续计费。
 
 ## Open Issues
