@@ -55,6 +55,7 @@
       let componentReadySent = false;
       let firstRenderReceived = false;
       let pendingFrameHeight = null;
+      let lastFrameHeightSent = null;
 
       const Streamlit = {
         ready() {
@@ -72,6 +73,10 @@
           if (!firstRenderReceived) {
             return;
           }
+          if (height === lastFrameHeightSent) {
+            return;
+          }
+          lastFrameHeightSent = height;
           window.parent.postMessage(
             { isStreamlitMessage: true, type: "streamlit:setFrameHeight", height },
             "*"
@@ -103,6 +108,7 @@
       let lastPoint = null;
       let currentImageSignature = "";
       let pendingEmit = null;
+      let renderSeq = 0;
 
       function resizeCanvas(canvas, width, height) {
         canvas.width = width;
@@ -128,6 +134,7 @@
       }
 
       async function renderFromArgs(nextArgs) {
+        const seq = ++renderSeq;
         args = nextArgs || {};
         const width = Number(args.width || 600);
         const height = Number(args.height || 400);
@@ -148,22 +155,31 @@
 
         try {
           const baseImage = await loadImage(args.imageDataUrl);
+          if (seq !== renderSeq) {
+            return;
+          }
           baseCtx.drawImage(baseImage, 0, 0, width, height);
         } catch (_) {
+          if (seq !== renderSeq) {
+            return;
+          }
           baseCtx.fillStyle = "#f5f5f5";
           baseCtx.fillRect(0, 0, width, height);
         }
 
-        await drawMaskLayer(args.roiMaskDataUrl, roiMaskCtx, "rgba(255,220,0,1)", width, height);
-        await drawMaskLayer(args.hairMaskDataUrl, hairMaskCtx, "rgba(230,45,24,1)", width, height);
+        await drawMaskLayer(args.roiMaskDataUrl, roiMaskCtx, "rgba(255,220,0,1)", width, height, seq);
+        await drawMaskLayer(args.hairMaskDataUrl, hairMaskCtx, "rgba(230,45,24,1)", width, height, seq);
       }
 
-      async function drawMaskLayer(maskUrl, maskCtx, visibleColor, width, height) {
+      async function drawMaskLayer(maskUrl, maskCtx, visibleColor, width, height, seq) {
         if (!maskUrl) {
           return;
         }
         try {
           const maskImage = await loadImage(maskUrl);
+          if (seq !== renderSeq) {
+            return;
+          }
           maskCtx.drawImage(maskImage, 0, 0, width, height);
           drawCtx.save();
           drawCtx.globalCompositeOperation = "source-over";

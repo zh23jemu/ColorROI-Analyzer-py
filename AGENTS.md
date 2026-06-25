@@ -79,6 +79,7 @@
 - 将 Streamlit 分析界面英文化：侧边栏上传、绘制模式、分析选项、样本信息、预览标题、指标、提示、保存记录、CSV 下载按钮和分析错误信息均改为英文；导出记录中的字段值也改为英文标签。内部中文注释和项目记忆仍保留中文。
 - 根据用户反馈调整预览标题，将 `After hair inpainting` 改为 `After hair removal`，更贴近“毛发去除后”的表达。
 - 修复 Windows 服务器上传图片后自定义画布组件偶发 `Bad message format` 弹窗：组件通信增加 `componentReady` 防重复、首帧 `streamlit:render` 初始化保护，以及高度和 mask 回传守卫；当前 `.venv\Scripts\python.exe -m pytest` 12 项通过，`import app` 正常。
+- 继续修复 Windows 服务器上传图片后页面持续 `Running...` 并重新加载的问题：自定义画布组件现在对重复 `setFrameHeight` 做去重，同一高度不会反复通知 Streamlit；图片和 mask 异步加载增加 render 序号保护，旧加载结果不会覆盖新画布。当前 `.venv\Scripts\python.exe -m pytest` 12 项通过，`import app` 正常。
 
 ## Next TODO
 
@@ -86,6 +87,7 @@
 - 打开 `reports/pics_hair_review/index_standalone.html` 人工查看每张样张淡黄色自动皮损候选和红色毛发候选是否漏检或误检，并据此决定是否继续调自动皮损或自动毛发参数。
 - 在浏览器中重点复核自定义前端画布：黄色 ROI、红色毛发、橡皮擦即时擦标记、清空标记、开始分析、保存记录和 CSV 导出。
 - 在 Windows 服务器上 `git pull` 更新后，重新上传图片确认 `Bad message format` 弹窗是否消失，并确认画布绘制/橡皮擦/分析流程仍正常。
+- 如果 Windows 服务器更新后仍持续 `Running...`，优先检查服务器是否已重启 Streamlit 进程、浏览器是否仍缓存旧组件 HTML，以及服务器实际 Streamlit 版本；Python 3.12 本身不是当前首要怀疑点。
 - 用户完成公网测试后，终止 AWS 实例 `i-035e3e54eeef40e32` 并清理安全组 `sg-06d20438196dca6f6`，避免持续计费。
 
 ## Open Issues
