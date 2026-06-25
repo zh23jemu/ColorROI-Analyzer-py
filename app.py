@@ -58,7 +58,6 @@ def main() -> None:
         draw_mode = st.radio("Drawing mode", list(DRAW_MODE_OPTIONS), index=0)
         brush_size = st.slider("Brush size", min_value=3, max_value=36, value=10, step=1)
         clear_marks = st.button("Clear all annotations", use_container_width=True)
-        use_auto_lesion = st.checkbox("Auto-detect lesion candidate when ROI is not drawn", value=True)
         repair_hair = st.checkbox("Inpaint red hair / obstruction marks before analysis", value=True)
         run_analysis = st.button("Analyze", type="primary", use_container_width=True)
 
@@ -107,7 +106,7 @@ def main() -> None:
     _merge_component_value_into_state(canvas_value, (display_img.height, display_img.width))
 
     roi_boundary, hair_mask = _current_masks_for_analysis(img.shape[:2])
-    roi_boundary, roi_source = _prepare_roi_boundary(img, roi_boundary, use_auto_lesion)
+    roi_boundary, roi_source = _prepare_roi_boundary(roi_boundary)
     if should_run_analysis:
         hair_mask, hair_source = _prepare_hair_mask_for_analysis(img, roi_boundary, hair_mask)
         _run_analysis(img, roi_boundary, hair_mask, repair_hair, hair_source, roi_source)
@@ -775,44 +774,18 @@ def _analyze_image(
         return result
 
 
-def _prepare_roi_boundary(img: np.ndarray, roi_boundary: np.ndarray, use_auto_lesion: bool) -> tuple[np.ndarray, str]:
+def _prepare_roi_boundary(roi_boundary: np.ndarray) -> tuple[np.ndarray, str]:
     """准备最终 ROI 边界，并标记来源。
 
-    用户手动画出的黄色 ROI 永远优先；只有在没有手动 ROI 且用户启用自动识别时，
-    才使用传统图像分割生成的皮损候选。这样自动识别提供的是“初始候选”，用户
-    仍可通过手动画黄色边界覆盖它，避免自动结果不准时影响正式分析。
+    当前界面只接受用户手动画的黄色 ROI，不再提供自动皮损/ROI 候选识别。
+    若用户尚未绘制 ROI，则保持空 mask，让后续分析流程给出明确的有效像素不足
+    提示，避免自动区域干扰正式结果。
     """
 
     manual_roi = np.asarray(roi_boundary).astype(bool)
     if manual_roi.any():
         return manual_roi, "manual"
-    if not use_auto_lesion:
-        return manual_roi, "unknown"
-
-    lesion = _auto_lesion_mask(img)
-    if not lesion.any():
-        return manual_roi, "unknown"
-    return _mask_to_boundary(lesion), "auto"
-
-
-def _auto_lesion_mask(img: np.ndarray) -> np.ndarray:
-    """动态获取自动皮损候选函数，兼容 Streamlit 热更新模块缓存。"""
-
-    detector = getattr(colorroi_core, "auto_lesion_mask", None)
-    if detector is None:
-        reloaded_core = importlib.reload(colorroi_core)
-        detector = getattr(reloaded_core, "auto_lesion_mask")
-    return detector(img)
-
-
-def _mask_to_boundary(mask: np.ndarray) -> np.ndarray:
-    """动态获取 mask 转边界函数，兼容旧 Streamlit 进程缓存。"""
-
-    converter = getattr(colorroi_core, "mask_to_boundary", None)
-    if converter is None:
-        reloaded_core = importlib.reload(colorroi_core)
-        converter = getattr(reloaded_core, "mask_to_boundary")
-    return converter(mask)
+    return manual_roi, "unknown"
 
 
 def _prepare_hair_mask_for_analysis(
@@ -857,7 +830,7 @@ def _render_previews(img: np.ndarray, roi_boundary: np.ndarray, hair_mask: np.nd
 
     analysis = st.session_state.analysis
     display_hair = analysis.hair if analysis is not None else hair_mask
-    roi_caption = f"ROI / hair annotation (ROI: {_roi_source_label(roi_source)})"
+    roi_caption = "ROI / hair annotation"
     cols = st.columns(4)
     _image(cols[0], colorroi_core.to_uint8_image(img), caption="Original image")
     _image(cols[1], _make_overlay_preview(img, roi_boundary, display_hair), caption=roi_caption)
@@ -911,7 +884,7 @@ def _render_metrics() -> None:
     # Streamlit 的 metric 卡片在右侧结果栏中宽度较窄；把基础像素指标和颜色指标拆成两行，
     # 避免“灰/蓝灰/DMDI”挤在同一格里被浏览器截断成省略号。
     pixel_cols = st.columns(3)
-    pixel_cols[0].metric(f"ROI area ({_roi_source_label(st.session_state.roi_source)})", f"{analysis.roi_px} px")
+    pixel_cols[0].metric("ROI area", f"{analysis.roi_px} px")
     pixel_cols[1].metric(f"Hair marks ({hair_source})", f"{analysis.hair_px} px")
     pixel_cols[2].metric("Effective area", f"{effective_px} px")
 
@@ -1010,11 +983,9 @@ def _hair_source_label(analysis) -> str:
 
 
 def _roi_source_label(source: str | None) -> str:
-    """返回 ROI 来源标签，用于区分手动画和自动皮损候选。"""
+    """返回 ROI 来源标签；当前界面只支持用户手动画 ROI。"""
 
     source_text = str(source or "")
-    if source_text == "auto":
-        return "Auto candidate"
     if source_text == "manual":
         return "Manual"
     return "Unknown"

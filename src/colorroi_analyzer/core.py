@@ -237,69 +237,11 @@ def auto_hair_mask(img: np.ndarray) -> np.ndarray:
     return hair.astype(bool)
 
 
-def auto_lesion_mask(img: np.ndarray) -> np.ndarray:
-    """自动生成皮损/ROI 候选 mask。
-
-    这是一个保守的传统图像分割兜底算法，用于给医生或用户一个可复核的初始
-    ROI，不替代人工确认。核心思路是：
-
-    1. 用图像四周像素估计背景皮肤颜色；
-    2. 在 CIELAB 空间计算每个像素与背景肤色的颜色距离；
-    3. 用 Otsu 阈值找出与背景差异更大的区域；
-    4. 通过开闭运算、孔洞填充和连通域筛选，保留面积合理且靠近中心的候选。
-
-    返回:
-        与原图同尺寸的布尔 mask。若无法找到可靠候选，则返回全 False。
-    """
-
-    img_arr = np.asarray(img, dtype=np.float32)
-    if img_arr.ndim != 3 or img_arr.shape[2] < 3:
-        raise ValueError("Automatic lesion detection requires an RGB image array.")
-
-    rgb = np.clip(img_arr[:, :, :3], 0.0, 1.0)
-    h, w = rgb.shape[:2]
-    if h < 20 or w < 20:
-        return np.zeros((h, w), dtype=bool)
-
-    lab = color.rgb2lab(rgb)
-    border = _border_mask(h, w, max(4, int(min(h, w) * 0.08)))
-    background_lab = np.median(lab[border], axis=0)
-    delta = np.linalg.norm(lab - background_lab, axis=2)
-    delta = ndimage.gaussian_filter(delta, sigma=2.0)
-
-    delta_min = float(np.min(delta))
-    delta_max = float(np.max(delta))
-    if delta_max - delta_min < 1e-6:
-        return np.zeros((h, w), dtype=bool)
-    normalized = (delta - delta_min) / (delta_max - delta_min)
-
-    try:
-        threshold = threshold_otsu(normalized)
-    except ValueError:
-        return np.zeros((h, w), dtype=bool)
-
-    # 阈值加一点保守余量，减少把正常皮肤纹理整片纳入 ROI 的概率。
-    candidate = normalized > min(0.95, threshold * 1.05)
-    candidate &= ~border
-    candidate = ndimage.binary_opening(candidate, structure=_disc_structure(5))
-    candidate = ndimage.binary_closing(candidate, structure=_disc_structure(17))
-    candidate = ndimage.binary_fill_holes(candidate)
-
-    selected = _select_lesion_component(candidate)
-    if not selected.any():
-        return selected
-
-    # 对最终候选再做一次轻微闭运算，使边界更连续，便于转为黄色 ROI 边界。
-    selected = ndimage.binary_closing(selected, structure=_disc_structure(9))
-    selected = ndimage.binary_fill_holes(selected)
-    return selected.astype(bool)
-
-
 def mask_to_boundary(mask: np.ndarray, width: int = 3) -> np.ndarray:
     """把实心 ROI mask 转换成闭合边界 mask。
 
-    分析函数的入口沿用“黄色边界 -> 填充 ROI”的交互模型，因此自动皮损候选
-    也转换成边界形式再进入同一套分析流程，避免新增一条平行路径。
+    分析函数的入口沿用“黄色边界 -> 填充 ROI”的交互模型。这个工具函数用于
+    测试、脚本或其它显式传入的实心 ROI mask 转换，不会在应用里自动生成 ROI。
     """
 
     mask_bool = np.asarray(mask).astype(bool)
@@ -459,55 +401,3 @@ def _disc_structure(size: int) -> np.ndarray:
     return (xx * xx + yy * yy) <= radius * radius
 
 
-def _border_mask(height: int, width: int, margin: int) -> np.ndarray:
-    """生成四周边缘区域 mask，用于估计背景皮肤颜色。"""
-
-    margin = max(1, min(margin, height // 2, width // 2))
-    mask = np.zeros((height, width), dtype=bool)
-    mask[:margin, :] = True
-    mask[-margin:, :] = True
-    mask[:, :margin] = True
-    mask[:, -margin:] = True
-    return mask
-
-
-def _select_lesion_component(candidate: np.ndarray) -> np.ndarray:
-    """从候选二值图中选择最可能的皮损连通域。
-
-    评分同时考虑面积和离画面中心的距离：皮损照片通常把目标放在画面中心，
-    但也允许一定偏移。面积过小多为噪点，面积过大则通常是背景或光照变化。
-    """
-
-    candidate_bool = np.asarray(candidate).astype(bool)
-    labels, count = ndimage.label(candidate_bool)
-    if count == 0:
-        return np.zeros(candidate_bool.shape, dtype=bool)
-
-    h, w = candidate_bool.shape
-    total = h * w
-    center_y = (h - 1) / 2
-    center_x = (w - 1) / 2
-    max_distance = np.hypot(center_y, center_x) + 1e-6
-    best_label = 0
-    best_score = -np.inf
-
-    for label in range(1, count + 1):
-        component = labels == label
-        area = int(component.sum())
-        area_ratio = area / total
-        if area_ratio < 0.002 or area_ratio > 0.65:
-            continue
-
-        ys, xs = np.nonzero(component)
-        centroid_y = float(np.mean(ys))
-        centroid_x = float(np.mean(xs))
-        center_score = 1.0 - min(1.0, np.hypot(centroid_y - center_y, centroid_x - center_x) / max_distance)
-        # 面积采用平方根压缩，避免一味偏向过大的光照区域。
-        score = np.sqrt(area_ratio) * 0.65 + center_score * 0.35
-        if score > best_score:
-            best_score = score
-            best_label = label
-
-    if best_label == 0:
-        return np.zeros(candidate_bool.shape, dtype=bool)
-    return labels == best_label

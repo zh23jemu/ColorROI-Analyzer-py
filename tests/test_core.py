@@ -1,7 +1,7 @@
 import numpy as np
 
 from colorroi_analyzer.analysis import analyze_image
-from colorroi_analyzer.core import auto_hair_mask, auto_lesion_mask, fill_roi_from_boundary, load_rgb_image, mask_to_boundary
+from colorroi_analyzer.core import auto_hair_mask, fill_roi_from_boundary, load_rgb_image
 
 
 def test_fill_roi_from_closed_boundary():
@@ -45,24 +45,6 @@ def test_auto_hair_mask_shape_and_type():
 
     assert hair.shape == img.shape[:2]
     assert hair.dtype == bool
-
-
-def test_auto_lesion_mask_detects_synthetic_center_lesion():
-    img = np.full((180, 240, 3), [0.78, 0.58, 0.46], dtype=np.float32)
-    yy, xx = np.mgrid[:180, :240]
-    lesion = ((xx - 120) ** 2 / 42**2 + (yy - 90) ** 2 / 30**2) <= 1
-    img[lesion] = np.array([0.38, 0.18, 0.14], dtype=np.float32)
-
-    detected = auto_lesion_mask(img)
-    boundary = mask_to_boundary(detected)
-    filled = fill_roi_from_boundary(boundary)
-
-    assert detected.shape == img.shape[:2]
-    assert detected.dtype == bool
-    assert detected[90, 120]
-    assert detected.sum() > 1000
-    assert filled[90, 120]
-    assert filled.sum() > 1000
 
 
 def test_analyze_uses_auto_hair_when_manual_mask_empty():

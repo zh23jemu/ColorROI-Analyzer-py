@@ -32,6 +32,7 @@
 
 ## Recent Changes
 
+- 已按用户要求移除自动皮损/ROI 候选能力：应用入口不再显示自动识别选项，`auto_lesion_mask()` 已从核心包移除，公共导出和相关测试也已清理；正式分析只接受手动画出的黄色 ROI。
 - 从原 R 项目复制 `pics/`、`test-artifacts/`、`docs/`、`0.jpg`、`1.jpg` 和早期原型文本。
 - 创建 Python 项目初始 `README.md`。
 - 创建贴合当前 Python/Streamlit 项目的 `.gitignore`。
@@ -61,9 +62,9 @@
 - 新增 `scripts/batch_review_pics.py`，批量分析 `pics/` 样张并生成 HTML 复核报告、CSV 汇总、原图/毛发叠加/DMDI 热图预览；当前 8 张样张已全部生成报告。
 - `scripts/batch_review_pics.py` 新增单文件报告输出 `reports/pics_hair_review/index_standalone.html`，图片以内嵌 base64 形式写入，方便直接发给用户确认。
 - 用户已确认该项目可以使用 Python 版实现，不再要求与原 R 版做逐项端到端数值对照。
-- 根据用户反馈更新 README 和样张复核报告文案，明确报告只用于确认自动毛发/遮挡识别效果，不做自动皮损分割；正式分析中的皮损/ROI 仍由用户手动画黄色边界。
-- 新增 `auto_lesion_mask()` 和 `mask_to_boundary()`，支持传统图像分割生成自动皮损/ROI 候选；Streamlit 页面新增“未手动画 ROI 时自动识别皮损候选”开关，手动画 ROI 优先覆盖自动候选；批量复核报告改为展示自动皮损候选（淡黄）和自动毛发/遮挡（红色）。
-- 用户反馈收紧版自动皮损候选效果不如上一版，已回退 `fix: 收紧自动皮损候选范围` 的算法和报告结果，恢复较宽松的上一版自动 ROI 候选。
+- 根据用户反馈更新 README 和样张复核报告文案，明确正式分析只使用用户手动画黄色 ROI，不再提供自动皮损/ROI 候选；毛发/遮挡仍可自动兜底识别。
+- 已移除 `auto_lesion_mask()` 及其 UI 入口和公共导出，自动皮损/ROI 候选功能不再作为项目能力对外暴露。
+- 批量复核报告已从“自动皮损候选+毛发”改为仅复核毛发标注，避免继续强化自动 ROI 这个已移除功能。
 - 在 AWS `ap-east-1` 创建公网测试部署：使用已有 VPC 子网 `subnet-03781c1b2a13b3e3d`，安全组 `sg-06d20438196dca6f6` 开放 TCP `80` 和 `8501`。由于用户浏览器访问 `8501` 超时，改为 `t3.small` 实例 `i-0a23b365d8517d699` 直接监听 `80`，测试地址 `http://43.198.137.234/` 直连返回 200；旧实例 `i-052190b6f08e3282b` 和 `i-00cd03f5b3cfbafab` 已发起终止。
 - 修复云端 Streamlit 1.39 不支持 `st.image(use_container_width=True)` 导致上传图片后报错的问题：新增 `_image()` 兼容封装，旧版自动退回 `use_column_width=True`；已重新打包上传 S3，并部署修复版实例 `i-017b0027602f81aed`，公网地址 `http://18.162.126.69/` 返回 200，旧实例 `i-0a23b365d8517d699` 已发起终止。
 - 已创建 GitHub public repo `https://github.com/zh23jemu/ColorROI-Analyzer-py`，本地 `master` 分支跟踪 `origin/master`；新增 `deploy/aws-git-sync-user-data.sh` 模板，用于让 AWS EC2 从 GitHub clone 项目并通过 systemd timer 定期执行 `git pull --ff-only` 同步代码。
@@ -86,7 +87,7 @@
 ## Next TODO
 
 - 在浏览器中重新执行一次完整人工流程：上传真实样例、手绘 ROI、不标红色毛发时验证自动毛发检测、再标红色毛发时验证人工 mask 优先、保存记录和导出 CSV。
-- 打开 `reports/pics_hair_review/index_standalone.html` 人工查看每张样张淡黄色自动皮损候选和红色毛发候选是否漏检或误检，并据此决定是否继续调自动皮损或自动毛发参数。
+- 打开 `reports/pics_hair_review/index_standalone.html` 人工查看每张样张红色毛发候选是否漏检或误检，并据此决定是否继续调自动毛发参数。
 - 在浏览器中重点复核自定义前端画布：黄色 ROI、红色毛发、橡皮擦即时擦标记、清空标记、开始分析、保存记录和 CSV 导出。
 - 在 Windows 服务器上 `git pull` 更新后，重新上传图片确认 `Bad message format` 弹窗是否消失，并确认画布绘制/橡皮擦/分析流程仍正常。
 - 如果 Windows 服务器更新后仍持续 `Running...`，优先检查服务器是否已重启 Streamlit 进程、浏览器是否仍缓存旧组件 HTML，以及服务器实际 Streamlit 版本；Python 3.12 本身不是当前首要怀疑点。
@@ -98,7 +99,7 @@
 
 - 当前 Windows 终端可能以非 UTF-8 编码显示中文脚本输出，计算结果不受影响。
 - 自定义画布组件为无构建静态 HTML/JS，仍需在真实浏览器里复核 Streamlit component 通信、mask 回传大小和移动端触控体验。
-- 自动皮损候选为传统图像分割方法，不是深度学习分割模型；复杂背景、光照不均或皮损接近肤色时可能需要用户手动画 ROI 修正。
+- 当前正式分析只使用用户手动画 ROI；若未绘制 ROI，会直接提示有效像素不足，而不会自动补一个皮损候选。
 - 当前 `.venv` 因已有 Streamlit 服务占用二进制文件，未完成依赖降级；但应用内兼容 shim 已验证可在 Streamlit 1.58 中补齐缺失 API。若重建全新 `.venv`，依赖约束会安装兼容范围内的 Streamlit。
 - AWS 公网测试实例当前开放 `80` 到 `0.0.0.0/0`，仅适合短期用户验收。应用没有登录鉴权，不应上传敏感图片，测试结束后应尽快清理云资源。
 
