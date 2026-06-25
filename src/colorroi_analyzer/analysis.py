@@ -59,13 +59,13 @@ def analyze_image(
     h, w = image.shape[:2]
     roi = fill_roi_from_boundary(roi_boundary)
     if roi.shape != (h, w):
-        raise ValueError("ROI mask 尺寸必须与图片尺寸一致。")
+        raise ValueError("ROI mask size must match the image size.")
     if int(roi.sum()) < 50:
-        raise ValueError("ROI 内有效像素过少，请先画出闭合的黄色 ROI 边界。")
+        raise ValueError("The ROI contains too few valid pixels. Please draw a closed yellow ROI boundary first.")
 
     hair = np.zeros((h, w), dtype=bool) if hair_mask is None else np.asarray(hair_mask).astype(bool)
     if hair.shape != (h, w):
-        raise ValueError("毛发 mask 尺寸必须与图片尺寸一致。")
+        raise ValueError("Hair mask size must match the image size.")
     hair_source = hair_source_hint or "manual"
     if not hair.any():
         hair = auto_hair_mask(image) & roi
@@ -75,12 +75,12 @@ def analyze_image(
     effective_mask = roi & (~hair)
     roi_pixels = clean[effective_mask]
     if roi_pixels.shape[0] < 50:
-        raise ValueError("ROI 内有效像素过少，无法稳定分析。")
+        raise ValueError("The ROI contains too few valid pixels for stable analysis.")
 
     lab = rgb_to_lab(roi_pixels)
     clusters = cluster_lab_colors(lab, k=4)
     if clusters is None:
-        raise ValueError("ROI 内像素不足，无法完成四分类。")
+        raise ValueError("The ROI does not contain enough pixels for four-class clustering.")
 
     heatmap = make_heatmap_image(image, roi, hair, clusters.dmdi)
     roi_px = int(roi.sum())

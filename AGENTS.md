@@ -76,6 +76,7 @@
 - 本地替换第三方画布组件：新增 `components/colorroi_canvas/index.html` 无构建自定义 Streamlit 前端组件，使用原图层、可见标记层、ROI mask 层和毛发 mask 层实现即时绘制与即时橡皮擦；橡皮擦通过前端 `destination-out` 只擦黄色/红色标记和隐藏 mask，不覆盖原图。`app.py` 改为通过组件回传的 PNG mask 更新 session，`pyproject.toml` 和 `requirements.txt` 已移除 `streamlit-drawable-canvas` 依赖，README 已同步说明。当前修改仅本地，暂不 push。
 - 修复自定义画布二次擦除时旧标记复活的问题：`app.py` 现在会在渲染前读取当前组件 key 的上一次 PNG mask 回传并合并到 session，再把最新累计 mask 传回前端，避免第二次擦除时组件被旧后端状态覆盖；新增测试覆盖组件回传格式识别。
 - 优化自定义画布橡皮擦闪动：前端组件只在图片或尺寸变化时重建底图，不因 ROI/毛发 mask 变化反复整层清空和重绘，减少第二次及后续橡皮擦时的轻微闪烁感。
+- 将 Streamlit 分析界面英文化：侧边栏上传、绘制模式、分析选项、样本信息、预览标题、指标、提示、保存记录、CSV 下载按钮和分析错误信息均改为英文；导出记录中的字段值也改为英文标签。内部中文注释和项目记忆仍保留中文。
 
 ## Next TODO
 

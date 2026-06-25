@@ -35,6 +35,14 @@ import colorroi_analyzer.analysis as colorroi_analysis
 
 
 MAX_DISPLAY_WIDTH = 860
+DRAW_MODE_OPTIONS = {
+    "ROI boundary (yellow)": "roi",
+    "Hair / obstruction (red)": "hair",
+    "Eraser": "eraser",
+}
+GENDER_OPTIONS = ["Male", "Female", "Unknown"]
+HAIR_CLINICAL_OPTIONS = ["Present", "Absent", "Unknown"]
+PATTERN_OPTIONS = ["Not specified", "Globular", "Homogeneous", "Reticular", "Multicomponent"]
 
 
 def main() -> None:
@@ -46,25 +54,25 @@ def main() -> None:
     st.title("ColorROI Analyzer")
 
     with st.sidebar:
-        uploaded = st.file_uploader("上传图片", type=["jpg", "jpeg", "png", "bmp", "tif", "tiff"])
-        draw_mode = st.radio("绘制模式", ["ROI 边界（黄色）", "毛发标注（红色）", "橡皮擦"], index=0)
-        brush_size = st.slider("画笔粗细", min_value=3, max_value=36, value=10, step=1)
-        clear_marks = st.button("清空所有标记", use_container_width=True)
-        use_auto_lesion = st.checkbox("未手动画 ROI 时自动识别皮损候选", value=True)
-        repair_hair = st.checkbox("分析前修复红色毛发区域", value=True)
-        run_analysis = st.button("开始分析", type="primary", use_container_width=True)
+        uploaded = st.file_uploader("Upload image", type=["jpg", "jpeg", "png", "bmp", "tif", "tiff"])
+        draw_mode = st.radio("Drawing mode", list(DRAW_MODE_OPTIONS), index=0)
+        brush_size = st.slider("Brush size", min_value=3, max_value=36, value=10, step=1)
+        clear_marks = st.button("Clear all annotations", use_container_width=True)
+        use_auto_lesion = st.checkbox("Auto-detect lesion candidate when ROI is not drawn", value=True)
+        repair_hair = st.checkbox("Inpaint red hair / obstruction marks before analysis", value=True)
+        run_analysis = st.button("Analyze", type="primary", use_container_width=True)
 
         st.divider()
-        st.subheader("样本信息")
-        sample_name = st.text_input("姓名/样本名")
-        sample_id = st.text_input("编号")
-        gender = st.radio("性别", ["男", "女", "未知"], index=2, horizontal=True)
-        hair_clinical = st.radio("临床是否可见毛发", ["有", "无", "未知"], index=2, horizontal=True)
-        pattern = st.selectbox("结构模式", ["未填写", "Globular", "Homogeneous", "Reticular", "Multicomponent"])
-        save_record = st.button("保存记录", use_container_width=True)
+        st.subheader("Sample Information")
+        sample_name = st.text_input("Name / sample")
+        sample_id = st.text_input("ID")
+        gender = st.radio("Sex", GENDER_OPTIONS, index=2, horizontal=True)
+        hair_clinical = st.radio("Clinically visible hair", HAIR_CLINICAL_OPTIONS, index=2, horizontal=True)
+        pattern = st.selectbox("Pattern", PATTERN_OPTIONS)
+        save_record = st.button("Save record", use_container_width=True)
 
     if uploaded is None:
-        st.info("请先上传一张图片。")
+        st.info("Please upload an image first.")
         _render_records()
         return
 
@@ -312,11 +320,7 @@ def _merge_component_value_into_state(value: dict | None, display_shape: tuple[i
 def _canvas_component_mode(draw_mode: str) -> str:
     """把界面中文模式转换为前端组件使用的短模式名。"""
 
-    if draw_mode == "毛发标注（红色）":
-        return "hair"
-    if draw_mode == "橡皮擦":
-        return "eraser"
-    return "roi"
+    return DRAW_MODE_OPTIONS.get(draw_mode, "roi")
 
 
 def _image_to_data_url(image: Image.Image) -> str:
@@ -685,7 +689,7 @@ def _run_analysis(
     try:
         st.session_state.analysis = _analyze_image(img, roi_boundary, hair_mask, repair_hair, hair_source)
         st.session_state.roi_source = roi_source or "unknown"
-        st.success("分析完成。")
+        st.success("Analysis complete.")
     except Exception as exc:
         st.session_state.analysis = None
         st.warning(str(exc))
@@ -818,13 +822,13 @@ def _render_previews(img: np.ndarray, roi_boundary: np.ndarray, hair_mask: np.nd
 
     analysis = st.session_state.analysis
     display_hair = analysis.hair if analysis is not None else hair_mask
-    roi_caption = f"ROI / 毛发标注（ROI：{_roi_source_label(roi_source)}）"
+    roi_caption = f"ROI / hair annotation (ROI: {_roi_source_label(roi_source)})"
     cols = st.columns(4)
-    _image(cols[0], colorroi_core.to_uint8_image(img), caption="原始图")
+    _image(cols[0], colorroi_core.to_uint8_image(img), caption="Original image")
     _image(cols[1], _make_overlay_preview(img, roi_boundary, display_hair), caption=roi_caption)
     if analysis is not None:
-        _image(cols[2], colorroi_core.to_uint8_image(analysis.clean_image), caption="毛发修复后")
-        _image(cols[3], colorroi_core.to_uint8_image(analysis.heatmap), caption="DMDI 热图")
+        _image(cols[2], colorroi_core.to_uint8_image(analysis.clean_image), caption="After hair inpainting")
+        _image(cols[3], colorroi_core.to_uint8_image(analysis.heatmap), caption="DMDI heatmap")
     else:
         cols[2].empty()
         cols[3].empty()
@@ -863,7 +867,7 @@ def _render_metrics() -> None:
 
     analysis = st.session_state.analysis
     if analysis is None:
-        st.caption("当前尚未生成分析结果。")
+        st.caption("No analysis result yet.")
         return
 
     ratios = analysis.clusters.ratios
@@ -872,15 +876,15 @@ def _render_metrics() -> None:
     # Streamlit 的 metric 卡片在右侧结果栏中宽度较窄；把基础像素指标和颜色指标拆成两行，
     # 避免“灰/蓝灰/DMDI”挤在同一格里被浏览器截断成省略号。
     pixel_cols = st.columns(3)
-    pixel_cols[0].metric(f"ROI 面积（{_roi_source_label(st.session_state.roi_source)}）", f"{analysis.roi_px} px")
-    pixel_cols[1].metric(f"毛发标注（{hair_source}）", f"{analysis.hair_px} px")
-    pixel_cols[2].metric("有效区", f"{effective_px} px")
+    pixel_cols[0].metric(f"ROI area ({_roi_source_label(st.session_state.roi_source)})", f"{analysis.roi_px} px")
+    pixel_cols[1].metric(f"Hair marks ({hair_source})", f"{analysis.hair_px} px")
+    pixel_cols[2].metric("Effective area", f"{effective_px} px")
 
     color_cols = st.columns(5)
-    color_cols[0].metric("黑", f"{ratios['black'] * 100:.2f}%")
-    color_cols[1].metric("棕", f"{ratios['brown'] * 100:.2f}%")
-    color_cols[2].metric("灰", f"{ratios['gray'] * 100:.2f}%")
-    color_cols[3].metric("蓝灰", f"{ratios['blue'] * 100:.2f}%")
+    color_cols[0].metric("Black", f"{ratios['black'] * 100:.2f}%")
+    color_cols[1].metric("Brown", f"{ratios['brown'] * 100:.2f}%")
+    color_cols[2].metric("Gray", f"{ratios['gray'] * 100:.2f}%")
+    color_cols[3].metric("Blue-gray", f"{ratios['blue'] * 100:.2f}%")
     color_cols[4].metric("DMDI", f"{analysis.clusters.dmdi:.4f}")
 
 
@@ -913,10 +917,10 @@ def _save_record(
 
     analysis = st.session_state.analysis
     if analysis is None:
-        st.warning("请先完成分析再保存记录。")
+        st.warning("Please run the analysis before saving a record.")
         return
     if not sample_name.strip() or not sample_id.strip():
-        st.warning("保存前请填写姓名/样本名和编号。")
+        st.warning("Please enter the name / sample and ID before saving.")
         return
 
     ratios = analysis.clusters.ratios
@@ -943,7 +947,7 @@ def _save_record(
             "dmdi": analysis.clusters.dmdi,
         }
     )
-    st.success("记录已保存。")
+    st.success("Record saved.")
 
 
 def _effective_px(analysis) -> int:
@@ -964,10 +968,10 @@ def _hair_source_label(analysis) -> str:
 
     source = str(getattr(analysis, "hair_source", "") or "")
     if source == "auto":
-        return "自动"
+        return "Auto"
     if source == "manual":
-        return "手动"
-    return "未知"
+        return "Manual"
+    return "Unknown"
 
 
 def _roi_source_label(source: str | None) -> str:
@@ -975,26 +979,26 @@ def _roi_source_label(source: str | None) -> str:
 
     source_text = str(source or "")
     if source_text == "auto":
-        return "自动候选"
+        return "Auto candidate"
     if source_text == "manual":
-        return "手动"
-    return "未知"
+        return "Manual"
+    return "Unknown"
 
 
 def _render_records() -> None:
     """渲染已保存记录和 CSV 下载按钮。"""
 
-    st.subheader("已保存记录")
+    st.subheader("Saved Records")
     records = st.session_state.records
     if not records:
-        st.caption("暂无保存记录。")
+        st.caption("No saved records yet.")
         return
 
     df = pd.DataFrame(records)
     st.dataframe(df, use_container_width=True, hide_index=True)
     csv_bytes = _dataframe_to_csv_bytes(df)
     st.download_button(
-        "导出 CSV",
+        "Export CSV",
         data=csv_bytes,
         file_name=f"colorroi_records_{datetime.now():%Y-%m-%d}.csv",
         mime="text/csv",

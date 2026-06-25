@@ -218,7 +218,7 @@ def auto_hair_mask(img: np.ndarray) -> np.ndarray:
 
     img_arr = np.asarray(img, dtype=np.float32)
     if img_arr.ndim != 3 or img_arr.shape[2] < 3:
-        raise ValueError("自动毛发检测需要 RGB 图片数组。")
+        raise ValueError("Automatic hair detection requires an RGB image array.")
 
     gray = color.rgb2gray(np.clip(img_arr[:, :, :3], 0.0, 1.0))
     closed = ndimage.grey_closing(gray, footprint=_disc_structure(15))
@@ -254,7 +254,7 @@ def auto_lesion_mask(img: np.ndarray) -> np.ndarray:
 
     img_arr = np.asarray(img, dtype=np.float32)
     if img_arr.ndim != 3 or img_arr.shape[2] < 3:
-        raise ValueError("自动皮损识别需要 RGB 图片数组。")
+        raise ValueError("Automatic lesion detection requires an RGB image array.")
 
     rgb = np.clip(img_arr[:, :, :3], 0.0, 1.0)
     h, w = rgb.shape[:2]
