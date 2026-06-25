@@ -49,20 +49,38 @@
 
     <script>
       // 轻量实现 Streamlit component 通信协议，避免为一个画布组件引入 npm 构建链。
+      // 注意：新版 Streamlit 前端在会话对象初始化完成前收到组件消息时，
+      // 可能弹出 “Tried to use SessionInfo before it was initialized”。
+      // 因此所有发给父页面的消息都经过初始化状态保护，首帧 render 后再允许回传值。
+      let componentReadySent = false;
+      let firstRenderReceived = false;
+      let pendingFrameHeight = null;
+
       const Streamlit = {
         ready() {
+          if (componentReadySent) {
+            return;
+          }
+          componentReadySent = true;
           window.parent.postMessage(
             { isStreamlitMessage: true, type: "streamlit:componentReady", apiVersion: 1 },
             "*"
           );
         },
         setFrameHeight(height) {
+          pendingFrameHeight = height;
+          if (!firstRenderReceived) {
+            return;
+          }
           window.parent.postMessage(
             { isStreamlitMessage: true, type: "streamlit:setFrameHeight", height },
             "*"
           );
         },
         setComponentValue(value) {
+          if (!firstRenderReceived) {
+            return;
+          }
           window.parent.postMessage(
             { isStreamlitMessage: true, type: "streamlit:setComponentValue", value, dataType: "json" },
             "*"
@@ -223,6 +241,9 @@
       }
 
       function emitMasks() {
+        if (!firstRenderReceived) {
+          return;
+        }
         window.clearTimeout(pendingEmit);
         pendingEmit = window.setTimeout(() => {
           Streamlit.setComponentValue({
@@ -272,10 +293,15 @@
         if (data.type !== "streamlit:render") {
           return;
         }
+        firstRenderReceived = true;
+        if (pendingFrameHeight !== null) {
+          Streamlit.setFrameHeight(pendingFrameHeight);
+        }
         renderFromArgs(data.args || {});
       });
 
-      Streamlit.ready();
+      // 等当前脚本执行完再通知父页面组件已就绪，避免和 Streamlit 会话初始化竞争。
+      window.setTimeout(() => Streamlit.ready(), 0);
     </script>
   </body>
 </html>
