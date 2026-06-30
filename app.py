@@ -54,20 +54,22 @@ def main() -> None:
     st.title("ColorROI Analyzer")
 
     with st.sidebar:
+        st.subheader("Sample Information")
+        sample_name = st.text_input("Name / sample")
+        sample_id = st.text_input("ID")
+        gender = st.radio("Sex", GENDER_OPTIONS, index=2, horizontal=True)
+
         uploaded = st.file_uploader("Upload image", type=["jpg", "jpeg", "png", "bmp", "tif", "tiff"])
+
+        hair_clinical = st.radio("Clinically visible hair", HAIR_CLINICAL_OPTIONS, index=2, horizontal=True)
+        pattern = st.selectbox("Pattern", PATTERN_OPTIONS)
+
         draw_mode = st.radio("Drawing mode", list(DRAW_MODE_OPTIONS), index=0)
         brush_size = st.slider("Brush size", min_value=3, max_value=36, value=10, step=1)
         clear_marks = st.button("Clear all annotations", use_container_width=True)
         repair_hair = st.checkbox("Inpaint red hair / obstruction marks before analysis", value=True)
         run_analysis = st.button("Analyze", type="primary", use_container_width=True)
 
-        st.divider()
-        st.subheader("Sample Information")
-        sample_name = st.text_input("Name / sample")
-        sample_id = st.text_input("ID")
-        gender = st.radio("Sex", GENDER_OPTIONS, index=2, horizontal=True)
-        hair_clinical = st.radio("Clinically visible hair", HAIR_CLINICAL_OPTIONS, index=2, horizontal=True)
-        pattern = st.selectbox("Pattern", PATTERN_OPTIONS)
         save_record = st.button("Save record", use_container_width=True)
 
     if uploaded is None:
