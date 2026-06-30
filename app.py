@@ -862,7 +862,7 @@ def _render_metrics() -> None:
     effective_px = _effective_px(analysis)
     hair_source = _hair_source_label(analysis)
     # Streamlit 的 metric 卡片在右侧结果栏中宽度较窄；把基础像素指标和颜色指标拆成两行，
-    # 避免“灰/蓝灰/DMDI”挤在同一格里被浏览器截断成省略号。
+    # 避免“Gray/Blue/DMDI”挤在同一格里被浏览器截断成省略号。
     pixel_cols = st.columns(3)
     pixel_cols[0].metric("ROI area", f"{analysis.roi_px} px")
     pixel_cols[1].metric(f"Hair marks ({hair_source})", f"{analysis.hair_px} px")
@@ -872,7 +872,7 @@ def _render_metrics() -> None:
     color_cols[0].metric("Black", f"{ratios['black'] * 100:.2f}%")
     color_cols[1].metric("Brown", f"{ratios['brown'] * 100:.2f}%")
     color_cols[2].metric("Gray", f"{ratios['gray'] * 100:.2f}%")
-    color_cols[3].metric("Blue-gray", f"{ratios['blue'] * 100:.2f}%")
+    color_cols[3].metric("Blue", f"{ratios['blue'] * 100:.2f}%")
     color_cols[4].metric("DMDI", f"{analysis.clusters.dmdi:.4f}")
 
 

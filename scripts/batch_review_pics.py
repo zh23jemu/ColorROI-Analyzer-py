@@ -51,7 +51,7 @@ class ReviewRow:
     black_percent: float
     brown_percent: float
     gray_percent: float
-    blue_gray_percent: float
+    blue_percent: float
     dmdi: float
 
 
@@ -124,7 +124,7 @@ def _analyze_one(path: Path) -> ReviewRow:
         black_percent=round(ratios["black"] * 100, 4),
         brown_percent=round(ratios["brown"] * 100, 4),
         gray_percent=round(ratios["gray"] * 100, 4),
-        blue_gray_percent=round(ratios["blue"] * 100, 4),
+        blue_percent=round(ratios["blue"] * 100, 4),
         dmdi=round(result.clusters.dmdi, 6),
     )
 
@@ -330,7 +330,7 @@ def _render_card(row: ReviewRow, inline_assets: bool) -> str:
         {_metric("黑", f"{row.black_percent:.4f}%")}
         {_metric("棕", f"{row.brown_percent:.4f}%")}
         {_metric("灰", f"{row.gray_percent:.4f}%")}
-        {_metric("蓝灰", f"{row.blue_gray_percent:.4f}%")}
+        {_metric("蓝", f"{row.blue_percent:.4f}%")}
         {_metric("DMDI", f"{row.dmdi:.6f}")}
       </div>
       <div class="images">

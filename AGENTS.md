@@ -57,7 +57,8 @@
 - 分析结果新增 `hair_source`，UI 指标显示毛发 mask 来源；当前来源只区分 `Manual` 和 `None`，上传文件变化时会清空旧分析状态。
 - app 层 `_prepare_hair_mask_for_analysis()` 现在只准备用户手动红色 mask；没有红色标记时返回空 mask 和 `none` 来源。
 - 将 `analyze_image()` 顶层直接导入改为动态模块调用，遇到旧签名 `hair_source_hint` 报错时 reload `analysis.py` 后重试，仍不支持时退回旧调用并补来源字段。
-- 优化 Streamlit 分析结果指标布局，将基础像素指标和颜色/DMDI 指标拆成两行，修复右侧“灰、蓝灰、DMDI”显示被截断的问题。
+- 优化 Streamlit 分析结果指标布局，将基础像素指标和颜色/DMDI 指标拆成两行，修复右侧“Gray、Blue、DMDI”显示被截断的问题。
+- 根据用户反馈将界面和批量报告中的颜色标签统一显示为 `Blue`/“蓝”，不改变内部 `blue` 指标计算。
 - 新增 `scripts/batch_review_pics.py`，批量分析 `pics/` 样张并生成 HTML 复核报告、CSV 汇总、原图/毛发叠加/DMDI 热图预览；当前 8 张样张已全部生成报告。
 - `scripts/batch_review_pics.py` 新增单文件报告输出 `reports/pics_hair_review/index_standalone.html`，图片以内嵌 base64 形式写入，方便直接发给用户确认。
 - 用户已确认该项目可以使用 Python 版实现，不再要求与原 R 版做逐项端到端数值对照。
