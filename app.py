@@ -983,7 +983,33 @@ def _render_records() -> None:
         return
 
     df = pd.DataFrame(records)
-    st.dataframe(df, use_container_width=True, hide_index=True)
+    editor_df = df.copy()
+    editor_df.insert(0, "Delete", False)
+    edited_df = st.data_editor(
+        editor_df,
+        use_container_width=True,
+        hide_index=True,
+        disabled=[col for col in editor_df.columns if col != "Delete"],
+        column_config={
+            "Delete": st.column_config.CheckboxColumn(
+                "Delete",
+                help="Select records to delete.",
+                default=False,
+            )
+        },
+        key="records_editor",
+    )
+    selected_delete = edited_df["Delete"].fillna(False).astype(bool).to_numpy()
+    if selected_delete.any():
+        delete_count = int(selected_delete.sum())
+        if st.button(f"Delete selected records ({delete_count})", type="secondary", use_container_width=True):
+            # 只删除用户在当前表格中勾选的记录，避免误删未选中的历史结果。
+            st.session_state.records = [
+                record for record, should_delete in zip(records, selected_delete, strict=False) if not bool(should_delete)
+            ]
+            st.success(f"Deleted {delete_count} selected record(s).")
+            st.rerun()
+
     csv_bytes = _dataframe_to_csv_bytes(df)
     st.download_button(
         "Export CSV",
